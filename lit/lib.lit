@@ -1,0 +1,6 @@
+@title Ape - an Arbitrary-type Parser Expression Grammar library
+
+@code_type rust .rs
+
+--- lib.rs
+---

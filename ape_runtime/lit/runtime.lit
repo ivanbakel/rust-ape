@@ -1,0 +1,35 @@
+@title The Ape runtime
+
+@code_type rust .rs
+
+The runtime code has to act on some source of matchables. Ape represents this as a `ParseState`, which is a backtracking `Iterator` of matchables.
+
+--- runtime.rs+=
+@{imports}
+
+@{the runtime code}
+---
+
+--- the runtime code+=
+pub type ParseState<I> = BacktrackingIterator<I>;
+---
+
+--- imports+=
+extern crate backtracking_iterator;
+use backtracking_iterator::BacktrackingIterator;
+---
+
+A pattern might partially consume some values before failing to match, so the `ParseState` needs a way to put values "back on" the internal iterator before trying an alternative branch. This is possible with `BacktrackingIterator`'s `backtrack()` method. Successful matches can be prevented from being backtracked on using the `forget()` method.
+
+Patterns must be able to fail, so we reexport a custom `Result` type with a pattern `Error` type - a standard feature for libraries.
+
+--- the runtime code+=
+pub type Result<T> = std::result::Result<T, Error>;
+
+pub enum Error {
+  @{possible errors}
+}
+---
+
+--- possible errors
+---

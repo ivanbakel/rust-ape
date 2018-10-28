@@ -2,4 +2,5 @@
 
 members = [
   "ape_macros",
+  "ape_runtime",
 ]

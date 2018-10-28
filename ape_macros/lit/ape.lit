@@ -1,0 +1,168 @@
+@title Ape - an Arbitrary-type Parser Expression Grammar library
+
+@code_type rust .rs
+
+Ape is a library for producing Parser Expression Grammars over any type, using Rust's native pattern-matching syntax, in the style of kevinmehall's `rust-peg`. Ape aims to let you write a parser using an intuitive `peg`-style syntax and the same concepts as `&str`-parsers - in particular
+
+ * pattern binding and postprocessing in native Rust
+ * zero-copy parsing over sliceable sources
+ * natural expressive power, like sequences, alternatives, and negation
+
+@s The macro file
+
+Ape's macro code is a library file, which has the standard Rust format
+
+--- lib.rs
+@{crates}
+
+@{imports}
+
+@{content}
+---
+
+@s The `arb_peg!` macro
+ 
+An Ape parser is produced by the `arb_peg!` procedural macro, which does the work of generating an Ape AST and outputting pure Rust. Proc macros are declared as functions over `TokenStream`s, with the `[proc_macro]` attribute
+
+--- content+=
+#[proc_macro]
+pub fn arb_peg(tokens: TokenStream) -> TokenStream {
+  @{build an arbitrary parser from tokens}
+}
+---
+
+For now, we define this as a do-nothing function
+
+--- build an arbitrary parser from tokens
+tokens
+---
+
+Procedural macros require the `proc_macro` crate.
+
+--- crates+=
+extern crate proc_macro;
+---
+
+and `TokenStream`, above, needs to be imported
+
+--- imports+=
+use self::proc_macro::TokenStream; 
+---
+
+@s Ape's syntax
+
+The unit of Ape's grammar is a Rust pattern. The reason for this is that Rust patterns are already as powerful as any PEG (even more so in some cases), and they are familiar to Rust programmers - in short, it isn't broken. To this end, Ape aims to follow pattern syntax as much as possible.
+
+@ss Basic features
+
+Ape supports all the expected PEG features:
+  * sequencing patterns in Ape is done with a `~` between patterns, similar to Pest.
+  * alternation is done by `|` between patterns, the same as with regular Rust.
+  * negation is done by prefixing a pattern with `!`. 
+  * optional (zero-or-one) patterns are denoted by appending a `?`.
+  * zero-or-more and one-or-more are done by appending `*` and `+` respectively. 
+  
+Ape also borrows from `rust-peg` the handy extension that `pattern ** delimiter` and `pattern ++ delimiter` represent zero-or-more and one-or-more matches of a pattern, separated by the delimiter pattern, respectively.
+
+Since the base units of the grammar are Rust patterns, several things are supported by native syntax
+ * ranges
+ * the 'any' pattern - by `_`
+ * conditional matching - by `where` clauses
+
+@ss Building values from the pattern
+
+By default, Ape will make a successful parse return nothing - the return type will be `()`. To instead return a value, end the pattern with a curly block `{}` containing Rust code. The code will have access to variables bound in the pattern, and can return what you like.
+
+@ss Pattern objects and subrules
+
+Ape does not have an intrinsic notion of rules and rule use. Instead, an Ape pattern can be embedded inside another pattern using `:{}` - a brace block preceded by a colon. The contents of the brace block will be evaluated as Rust code, and the result will be used to do matching.
+
+So, we can define two patterns
+
+--- a pattern embedding example
+let foo = arb_peg!('a' ~ 'b');
+let bar = arb_peg!(:{ foo } ~ 'c');
+---
+
+and then `bar` will be equivalent to `'a' ~ 'b' ~ 'c'`.  In fact, embedding will work for a value of any type implementing Ape's `Pattern` trait, which is explained further down. 
+
+@s Extending Ape
+
+@ss The pattern trait
+
+The `Pattern` trait is Ape's representation of a generic way of doing runtime matching. Ape patterns are `Pattern`s, but so are many other things.
+
+--- content+=
+trait Pattern {
+  @{the pattern trait}
+}
+
+@{some handy pattern impls}
+--- 
+
+What does a `Pattern` do? That depends on some `Input` and `Output` types. These are decided by whatever is implementing the trait, so they're associated types.
+
+--- the pattern trait
+type Input;
+type Output;
+---
+
+Then a `Pattern` will take some form of `Input`, and maybe, if it matches, produce some kind of `Output`, or have the option to fail. These details will be the same as Ape's internal parser object: the input is a `ParseState`,  and errors are encoded as Ape's own `Error` type.
+
+--- the pattern trait+=
+fn pmatch<I>(&self, parse_state: &mut ParseState<I>) -> Result<Self::Output> where I: Iterator<Item=Self::Input>;
+---
+
+This may be a little opaque, so we can describe it with an example.
+
+@ss Using Eq instances as patterns
+
+--- some handy pattern impls+=
+impl<T> Pattern for T where T: Eq<T> {
+  @{the Eq impl}
+}
+---
+
+There's a natural way to use an equatable value as a pattern - match on equality. If the next value is equal to the thing we're using as a pattern, then we match successfully - otherwise, we return an error. 
+
+--- the Eq impl+=
+fn pmatch<I> (&self, parse_state: &mut ParseState<I>) -> Result<T> where I: Iterator<Item=T>{
+  let comparable = parse_state.expect()?;
+  if self == comparable {
+    Ok(comparable)
+  } else {
+    parse_error!()
+  }
+}
+---
+
+The `Input` type is then `T`. The `Output` type is less obvious - but we'll just make it `T` - there's no reason to discard the element if there's a match.
+
+--- the Eq impl+=
+type Input = T;
+type Output = T;
+---
+
+There's a natural way to use a sequence of patterns as a pattern - match all the patterns in the sequence. The `Input` for the sequence is the same as the `Input` of the individual elements - the `Output` is a `Vec` of the matched inputs. If any of the patterns fail, we return that error.
+
+--- some handy pattern impls+=
+impl<I> Pattern for I where I: Iterator, I::Item: Pattern {
+  type Input = I::Item::Input;
+  type Output = Vec<I::Item::Output>;
+
+  fn pmatch<PI> (&self, parse_state: &mut ParseState<PI>) -> Result<Vec<I::Item::Output>>
+    where PI: Iterator<Item=I::Item::Input> {
+    let mut matched = vec![];
+
+    for pattern in self {
+        let next = parse_state.expect()?;
+        let result = pattern.pmatch(parse_state)?;
+
+        matched.push(result);
+    }
+
+    Ok(matched)
+  }
+}
+---
+

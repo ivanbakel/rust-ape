@@ -2,20 +2,28 @@
 
 @code_type rust .rs
 
-The runtime code has to act on some source of matchables. Ape represents this as a `ParseState`, which is a backtracking `Iterator` of matchables.
+@s The library file
 
---- runtime.rs+=
+--- lib.rs+=
 @{imports}
 
 @{the runtime code}
 ---
 
+@s Parsing at runtime
+
+The runtime code has to act on some source of matchables. Ape represents this as a `ParseState`, which holds a backtracking `Iterator` of matchables.
+
 --- the runtime code+=
-pub type ParseState<I> = BacktrackingIterator<I>;
+pub struct ParseState<I> where I: Iterator {
+  iterator: BacktrackingIterator<I>,
+  global_position: usize,
+}
 ---
 
 --- imports+=
 extern crate backtracking_iterator;
+
 use backtracking_iterator::BacktrackingIterator;
 ---
 
@@ -26,10 +34,31 @@ Patterns must be able to fail, so we reexport a custom `Result` type with a patt
 --- the runtime code+=
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub enum Error {
+pub struct Error {
+  kind: ErrorKind,
+  message: Option<String>,
+}
+
+pub enum ErrorKind {
   @{possible errors}
 }
 ---
 
---- possible errors
+We provide some basic errors for handy use - an out-of-values error
+
+--- possible errors+=
+UnexpectedEndOfInput,
 ---
+
+A mismatch error
+
+--- possible errors+=
+Mismatch,
+---
+
+And any other kind of error people might want to generate later
+
+--- possible errors+=
+Other,
+---
+

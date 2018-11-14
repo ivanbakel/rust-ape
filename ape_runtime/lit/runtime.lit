@@ -15,7 +15,11 @@
 The runtime code has to act on some source of matchables. Ape represents this as a `ParseState`, which holds a backtracking `Iterator` of matchables.
 
 --- the runtime code+=
-pub struct ParseState<I> where I: Iterator {
+@{the ParseState trait}
+---
+
+--- the ParseState trait+=
+pub struct ParseState<I> where I: Iterator, I::Item: Clone {
   iterator: BacktrackingIterator<I>,
   global_position: usize,
 }
@@ -28,6 +32,45 @@ use backtracking_iterator::BacktrackingIterator;
 ---
 
 A pattern might partially consume some values before failing to match, so the `ParseState` needs a way to put values "back on" the internal iterator before trying an alternative branch. This is possible with `BacktrackingIterator`'s `backtrack()` method. Successful matches can be prevented from being backtracked on using the `forget()` method.
+
+@s Patterns
+
+Patterns are defined in their own module
+
+--- lib.rs+=
+mod patterns;
+pub use self::patterns::*;
+
+@{the ParseFeed trait}
+---
+
+Patterns don't act directly on a `ParseState`, to avoid carrying around the iterator information in the struct. They instead act on a more generic trait - `ParseFeed`
+
+--- the ParseFeed trait+=
+pub trait ParseFeed {
+  type Item;
+
+  @{ParseFeed methods}
+}
+---
+
+which has a minimal definition mirroring the `ParseState` methods
+  
+--- ParseFeed methods+=
+fn next(&mut self) -> Option<Self::Item>;
+---
+
+and a very basic `impl`
+
+--- the ParseFeed trait+=
+impl<I> ParseFeed for ParseState<I> where I: Iterator, I::Item: Clone {
+  type Item = I::Item;
+
+  fn next(&mut self) -> Option<I::Item> {
+    self.iterator.next()
+  }
+}
+---
 
 @s Errors
 
@@ -88,10 +131,27 @@ which accepts no arguments, and produces an empty message
 }};
 ---
 
-or variadic arguments, and produces a formatted message with the `fmt!` macro
+or variadic arguments, and produces a formatted message with the `format!` macro
 
 --- mismatch macro+=
 ($($arg:expr),+) => {{
-  Err(Error { kind: ErrorKind::Mismatch, message: Some(fmt!$($arg),+) })
+  Err(Error { kind: ErrorKind::Mismatch, message: Some(format!($($arg),+)) })
 }}; 
 ---
+
+@s Using the ParseFeed
+
+`ParseFeed` provides some basic methods to help with writing patterns.
+
+The first is a "expecting a next token" function which produces an error if there is no next token.
+
+--- ParseFeed methods+=
+fn expect(&mut self) -> Result<Self::Item> {
+  if let Some(val) = self.next() {
+    Ok(val)
+  } else {
+    Err(Error { kind: ErrorKind::UnexpectedEndOfInput, message: None })
+  }
+}
+---
+

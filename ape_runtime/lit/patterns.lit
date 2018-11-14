@@ -10,31 +10,30 @@
 
 @s The pattern trait
 
-The `Pattern` trait is Ape's representation of a generic way of doing runtime matching. Ape patterns are `Pattern`s, but so are many other things.
+The `Pattern` trait is Ape's representation of a generic way of doing runtime matching. Ape patterns are `Pattern`s, but so are many other things. A `Pattern` matches some input, which is decided by a type parameter
 
 --- the pattern trait
-pub trait Pattern {
+pub trait Pattern<Input: Clone> {
   @{pattern features}
 }
 
 @{some handy pattern impls}
 --- 
 
-What does a `Pattern` do? That depends on some `Input` and `Output` types. These are decided by whatever is implementing the trait, so they're associated types.
+What does a `Pattern` do? That depends on its `Input` type parameter, and some `Output` type. This are decided by whatever is implementing the trait, so it's an associated type.
 
 --- pattern features+=
-type Input;
 type Output;
 ---
 
-Then a `Pattern` will take some form of `Input`, and maybe, if it matches, produce some kind of `Output`, or have the option to fail. These details will be the same as Ape's internal parser object: the input is a `ParseState`,  and errors are encoded as Ape's own `Error` type.
+Then a `Pattern` will take some form of `Input`, and maybe, if it matches, produce some kind of `Output`, or have the option to fail. These details will be the same as Ape's internal parser object: the input is a `ParseFeed`,  and errors are encoded as Ape's own `Error` type.
 
 --- imports+=
-use crate::{Result};
+use crate::{ParseFeed, Result, Error, ErrorKind};
 ---
 
 --- pattern features+=
-fn pmatch<I>(&self, parse_state: &mut ParseState<I>) -> Result<Self::Output> where I: Iterator<Item=Self::Input>;
+fn pmatch<P>(self, parse_feed: &mut P) -> Result<Self::Output> where P: ParseFeed<Item=Input>;
 ---
 
 This may be a little opaque, so we can describe it with an example.
@@ -46,13 +45,14 @@ This may be a little opaque, so we can describe it with an example.
 Since the `Pattern` trait is what some other languages would call a "functional interface", there's a natural implementation for just a function with `pmatch`'s signature
 
 --- some handy pattern impls+=
-impl<F, O> Pattern for F where F: for<I> Fn(&mut ParseState<I>) -> Result<O> {
-  type Input = I::Item::Input;
-  type Output = O;
+impl<Input: Clone, Func, Output> Pattern<Input> for &Func where 
+  Func: Fn(&mut ParseFeed<Item=Input>) -> Result<Output> {
+  type Output = Output;
 
-  fn pmatch<I> (&self, parse_state: &mut ParseState<I>) -> Result<O> {
+  fn pmatch<P> (self, parse_feed: &mut P) -> Result<Output>
+    where P: ParseFeed<Item=Input> {
     // Just call the function
-    self(parse_state)
+    self(parse_feed)
   }
 }
 ---
@@ -63,18 +63,25 @@ There's a natural way to use an equatable value as a pattern - match on equality
 
 --- some handy pattern impls+=
 pub struct Equatable<E>(E);
+---
 
-impl<T> Pattern for Equatable<T> where T: Eq<T>, T: fmt::Debug {
+To autogenerate the mismatch error, we use the `Debug` trait, similarly to `unwrap()`
+
+--- imports+=
+use std::fmt;
+---
+
+--- some handy pattern impls+=
+impl<T: Clone> Pattern<T> for Equatable<T> where T: Eq, T: fmt::Debug {
   @{the Eq impl}
 }
 ---
 
-
 --- the Eq impl+=
-fn pmatch<I> (&self, parse_state: &mut ParseState<I>) -> Result<T> where I: Iterator<Item=T>{
-  let comparable = parse_state.expect()?;
-  let Equatable(ref value) = self;
-  if value == &comparable {
+fn pmatch<P> (self, parse_feed: &mut P) -> Result<T> where P: ParseFeed<Item=T>{
+  let comparable = parse_feed.expect()?;
+  let Equatable(value) = self;
+  if value == comparable {
     Ok(comparable)
   } else {
     mismatch!("Expected {:?}, got {:?}", value, comparable)
@@ -85,7 +92,6 @@ fn pmatch<I> (&self, parse_state: &mut ParseState<I>) -> Result<T> where I: Iter
 The `Input` type is then `T`. The `Output` type is less obvious - but we'll just make it `T` - there's no reason to discard the element if there's a match.
 
 --- the Eq impl+=
-type Input = T;
 type Output = T;
 ---
 
@@ -102,19 +108,17 @@ pub struct Iter<I>(I);
 and then implement the trait
 
 --- some handy pattern impls+=
-impl<I> Pattern for Iter<I> where I: Iterator, I::Item: Pattern {
-  type Input = I::Item::Input;
-  type Output = Vec<I::Item::Output>;
+impl<Input: Clone, I> Pattern<Input> for Iter<I> where I: Iterator, I::Item: Pattern<Input> {
+  type Output = Vec<<I::Item as Pattern<Input>>::Output>;
 
-  fn pmatch<PI> (&self, parse_state: &mut ParseState<PI>) -> Result<Vec<I::Item::Output>>
-    where PI: Iterator<Item=I::Item::Input> {
+  fn pmatch<P> (self, parse_feed: &mut P) -> Result<Self::Output>
+    where P: ParseFeed<Item=Input> {
     let mut matched = vec![];
 
     let Iter(iter) = self;
 
     for pattern in iter {
-        let next = parse_state.expect()?;
-        let result = pattern.pmatch(parse_state)?;
+        let result = pattern.pmatch(parse_feed)?;
 
         matched.push(result);
     }

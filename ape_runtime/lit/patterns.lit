@@ -39,23 +39,45 @@ fn pmatch<I>(&self, parse_state: &mut ParseState<I>) -> Result<Self::Output> whe
 
 This may be a little opaque, so we can describe it with an example.
 
-@ss Using Eq instances as patterns
+@s Example impls
+
+@ss Functions as patterns
+
+Since the `Pattern` trait is what some other languages would call a "functional interface", there's a natural implementation for just a function with `pmatch`'s signature
 
 --- some handy pattern impls+=
-impl<T> Pattern for T where T: Eq<T>, T: fmt::Debug {
+impl<F, O> Pattern for F where F: for<I> Fn(&mut ParseState<I>) -> Result<O> {
+  type Input = I::Item::Input;
+  type Output = O;
+
+  fn pmatch<I> (&self, parse_state: &mut ParseState<I>) -> Result<O> {
+    // Just call the function
+    self(parse_state)
+  }
+}
+---
+
+@ss Using Eq instances as patterns
+
+There's a natural way to use an equatable value as a pattern - match on equality. If the next value is equal to the thing we're using as a pattern, then we match successfully - otherwise, we return an error. Note that we have to wrap in a concrete type to avoid conflicting with the previous `impl`
+
+--- some handy pattern impls+=
+pub struct Equatable<E>(E);
+
+impl<T> Pattern for Equatable<T> where T: Eq<T>, T: fmt::Debug {
   @{the Eq impl}
 }
 ---
 
-There's a natural way to use an equatable value as a pattern - match on equality. If the next value is equal to the thing we're using as a pattern, then we match successfully - otherwise, we return an error. 
 
 --- the Eq impl+=
 fn pmatch<I> (&self, parse_state: &mut ParseState<I>) -> Result<T> where I: Iterator<Item=T>{
   let comparable = parse_state.expect()?;
-  if self == comparable {
+  let Equatable(ref value) = self;
+  if value == &comparable {
     Ok(comparable)
   } else {
-    mismatch!("Expected {:?}, got {:?}")
+    mismatch!("Expected {:?}, got {:?}", value, comparable)
   }
 }
 ---
@@ -67,9 +89,11 @@ type Input = T;
 type Output = T;
 ---
 
+@ss The Iterator instance
+
 There's a natural way to use a sequence of patterns as a pattern - match all the patterns in the sequence. The `Input` for the sequence is the same as the `Input` of the individual elements - the `Output` is a `Vec` of the matched inputs. If any of the patterns fail, we return that error.
 
-Note that this can't be done directly on the `Iterator` trait - that would conflict with the previous declaration. Instead, we wrap with a concrete type for the `impl`
+Note that, as before, this can't be done directly on the `Iterator` trait - that would conflict with the `Fn` declaration. Instead, we wrap with a concrete type for the `impl`
 
 --- some handy pattern impls+=
 pub struct Iter<I>(I);
@@ -96,21 +120,6 @@ impl<I> Pattern for Iter<I> where I: Iterator, I::Item: Pattern {
     }
 
     Ok(matched)
-  }
-}
----
-
-Finally, since the `Pattern` trait is what some other languages would call a "functional interface", there's a natural implementation for just a function with `pmatch`'s signature - again, we wrap in a concrete type
-
---- some handy pattern impls+=
-pub struct Func<F>(F);
-
-impl<F, O> Pattern for Func<F> where F: for<I> Fn(&mut ParseState<I>) -> Result<O> {
-  type Input = I::Item::Input;
-  type Output = O;
-
-  fn pmatch<I> (&self, parse_state: &mut ParseState<I>) -> Result<Vec<I::Item::Output>> {
-    self(parse_state)
   }
 }
 ---

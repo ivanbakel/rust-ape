@@ -26,7 +26,7 @@ What does a `Pattern` do? That depends on its `Input` type parameter, and some `
 type Output;
 ---
 
-Then a `Pattern` will take some form of `Input`, and maybe, if it matches, produce some kind of `Output`, or have the option to fail. These details will be the same as Ape's internal parser object: the input is a `ParseFeed`,  and errors are encoded as Ape's own `Error` type.
+Then a `Pattern` will take some form of `Input`, and maybe, if it matches, produce some kind of `Output`, or have the option to fail. These details will be the same as Ape's internal parser trait: the input is a `ParseFeed`, and errors are encoded as Ape's own `Error` type.
 
 --- imports+=
 use crate::{ParseFeed, Result, Error, ErrorKind};

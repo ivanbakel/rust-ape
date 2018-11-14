@@ -29,6 +29,8 @@ use backtracking_iterator::BacktrackingIterator;
 
 A pattern might partially consume some values before failing to match, so the `ParseState` needs a way to put values "back on" the internal iterator before trying an alternative branch. This is possible with `BacktrackingIterator`'s `backtrack()` method. Successful matches can be prevented from being backtracked on using the `forget()` method.
 
+@s Errors
+
 Patterns must be able to fail, so we reexport a custom `Result` type with a pattern `Error` type - a standard feature for libraries.
 
 --- the runtime code+=
@@ -62,3 +64,34 @@ And any other kind of error people might want to generate later
 Other,
 ---
 
+@ss Error macros
+
+For ease of use, we also export some small macros for generating errors.
+
+--- the runtime code+=
+@{error macros}
+---
+
+This macro produces a customised mismatch error
+
+--- error macros+=
+macro_rules ! mismatch {
+  @{mismatch macro}
+}
+---
+
+which accepts no arguments, and produces an empty message
+
+--- mismatch macro+=
+() => {{
+  Err(Error { kind: ErrorKind::Mismatch, message: None })
+}};
+---
+
+or variadic arguments, and produces a formatted message with the `fmt!` macro
+
+--- mismatch macro+=
+($($arg:expr),+) => {{
+  Err(Error { kind: ErrorKind::Mismatch, message: Some(fmt!$($arg),+) })
+}}; 
+---

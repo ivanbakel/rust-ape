@@ -1,0 +1,7 @@
+@title Generating Rust from Ape
+
+@code_type rust .rs
+
+--- code.rs
+---
+

@@ -1,0 +1,165 @@
+@title Ape's syntax
+
+@code_type rust .rs
+
+The AST code is a single file
+
+--- ast.rs+=
+@{imports}
+
+@{contents}
+---
+
+@s The AST types
+
+A pattern is represented as a struct
+
+--- contents+=
+pub(crate) struct Pattern {
+  @{pattern fields}
+}
+---
+
+with many possible variants
+
+--- contents+=
+pub(crate) enum PatternType {
+  @{ast variants}
+}
+---
+  
+--- pattern fields+=
+variant: PatternType,
+---
+
+@s Basic features
+
+The unit of Ape's grammar is a Rust pattern.
+
+--- imports+=
+use super::proc_macro::{TokenTree};
+---
+
+--- ast variants+=
+Raw(TokenTree),
+---
+
+Ape supports all the expected PEG features:
+  * sequencing patterns in Ape is done with a `~` between patterns, similar to Pest.
+--- ast variants+=
+Sequence(Vec<Pattern>),
+---
+  
+  * alternation is done by `|` between patterns, the same as with regular Rust.
+--- ast variants+=
+Alternation(Vec<Pattern>),
+---
+
+  * negation is done by prefixing a pattern with `!`.
+--- ast variants+=
+Negation(Box<Pattern>),   
+---
+
+  * lookahead can be denoted by prefixing a pattern with `->`.
+--- ast variants+=
+Lookahead(Box<Pattern>),
+---
+
+  * optional (zero-or-one) patterns are denoted by appending a `?`.
+--- ast variants+=
+Optional(Box<Pattern>),
+---
+
+  * zero-or-more and one-or-more are done by appending `*` and `+` respectively.
+  
+Both of these share a backend representation as a repeated pattern with some parameters
+
+--- ast variants+=
+Repetition {
+  pattern: Box<Pattern>,
+  @{repetition parameters} 
+},
+---
+
+To represent all repetition numbers, the parameters include the lower and upper bounds 
+
+--- repetition parameters+=
+at_least: Option<usize>,
+at_most: Option<usize>,
+--- 
+
+Repetition based on runtime values can be done directly in code, so is not included here.
+
+Ape also borrows from `rust-peg` the handy extension that `pattern ** delimiter` and `pattern ++ delimiter` represent zero-or-more and one-or-more matches of a pattern, separated by the delimiter pattern, respectively. These are also repetitions, and they require an additional parameter
+
+--- repetition parameters+=
+delimiter: Option<Box<Pattern>>,
+---
+
+Since the base units of the grammar are Rust patterns, several things are supported by native syntax
+ * ranges
+ * the 'any' pattern - by `_`
+ * conditional matching - by `if` guards
+
+--- pattern fields+=
+guard: Option<TokenTree>,
+---
+
+ * aliasing the matches of patterns, by `<ident> @ { ... }`
+
+--- imports+=
+use self::proc_macro::Ident;
+---
+
+--- pattern fields+=
+alias: Option<Ident>,
+---
+
+Aliasing a sequence or repetition of matches will yield a `Vec` of the match values.
+
+@s Building values from the pattern
+
+By default, Ape will make a successful parse return nothing. To instead return a value, we can end the pattern with a curly block `{}` containing Rust code. The code will have access to variables bound in the pattern. 
+
+--- pattern fields+=
+code_block: TokenTree,
+---
+
+@s Pattern subrules
+
+Ape does not have an intrinsic notion of rules and rule use. Instead, an Ape pattern can be embedded inside another pattern using `:{}` - a brace block preceded by a colon. The contents of the brace block will be evaluated as Rust code, and the result will be used to do matching.
+
+--- ast variants+=
+Runtime(TokenTree),
+---
+
+@s Parsing the macro contents
+
+To parse the macro token contents into an AST, we first declare a custom `Result` and `Error` type to allow for bad syntax
+
+--- contents+=
+pub(crate) type Result<T> = Result<T, Error>;
+pub(crate) struct Error {
+  @{error fields}
+}
+---
+
+so that the function to build the AST returns a `Result` over the AST type
+
+--- contents+=
+fn build(tokens: TokenStream) -> Result<Pattern> {
+  @{parsing tokens}
+}
+---
+
+The precedence, from lowest to highest, of the syntax features is defined as follows:
+ * code blocks
+ * `/`
+ * `~`
+ * `->`
+ * `if` guards
+ * `*`, `+`, `**`, `++`, `?`
+ * `!`
+ * aliasing
+
+

@@ -31,12 +31,6 @@ pub fn arb_peg(tokens: TokenStream) -> TokenStream {
 }
 ---
 
-For now, we define this as a do-nothing function
-
---- build an arbitrary parser from tokens
-tokens
----
-
 Procedural macros require the `proc_macro` crate.
 
 --- crates+=
@@ -49,42 +43,19 @@ and `TokenStream`, above, needs to be imported
 use self::proc_macro::TokenStream; 
 ---
 
-@s Ape's syntax
+Finally, we define the high-level flow of the macro - first, an AST is build to represent the pattern for which code needs to be generated; then, the generated Rust is produced by walking the AST.
 
-The unit of Ape's grammar is a Rust pattern. The reason for this is that Rust patterns are already as powerful as any PEG (even more so in some cases), and they are familiar to Rust programmers - in short, it isn't broken. To this end, Ape aims to follow pattern syntax as much as possible.
-
-@ss Basic features
-
-Ape supports all the expected PEG features:
-  * sequencing patterns in Ape is done with a `~` between patterns, similar to Pest.
-  * alternation is done by `|` between patterns, the same as with regular Rust.
-  * negation is done by prefixing a pattern with `!`. 
-  * optional (zero-or-one) patterns are denoted by appending a `?`.
-  * zero-or-more and one-or-more are done by appending `*` and `+` respectively. 
-  
-Ape also borrows from `rust-peg` the handy extension that `pattern ** delimiter` and `pattern ++ delimiter` represent zero-or-more and one-or-more matches of a pattern, separated by the delimiter pattern, respectively.
-
-Since the base units of the grammar are Rust patterns, several things are supported by native syntax
- * ranges
- * the 'any' pattern - by `_`
- * conditional matching - by `where` clauses
-
-@ss Building values from the pattern
-
-By default, Ape will make a successful parse return nothing - the return type will be `()`. To instead return a value, end the pattern with a curly block `{}` containing Rust code. The code will have access to variables bound in the pattern, and can return what you like.
-
-@ss Pattern objects and subrules
-
-Ape does not have an intrinsic notion of rules and rule use. Instead, an Ape pattern can be embedded inside another pattern using `:{}` - a brace block preceded by a colon. The contents of the brace block will be evaluated as Rust code, and the result will be used to do matching.
-
-So, we can define two patterns
-
---- a pattern embedding example
-let foo = arb_peg!('a' ~ 'b');
-let bar = arb_peg!(:{ foo } ~ 'c');
+--- build an arbitrary parser from tokens
+let ast = self::ast::build(tokens);
+self::code::generate(ast)
 ---
 
-and then `bar` will be equivalent to `'a' ~ 'b' ~ 'c'`.  In fact, embedding will work for a value of any type implementing Ape's `Pattern` trait, which is explained further down. 
+These steps are defined in the appropriate modules:
+
+--- lib.rs+=
+mod ast;
+mod code;
+---
 
 @s Extending Ape
 

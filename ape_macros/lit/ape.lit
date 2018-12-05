@@ -31,23 +31,31 @@ pub fn arb_peg(tokens: TokenStream) -> TokenStream {
 }
 ---
 
+
 Procedural macros require the `proc_macro` crate.
 
 --- crates+=
+#![feature(use_extern_macros)]
+#![feature(proc_macro_quote)]
+#![feature(proc_macro_span)]
+#![feature(proc_macro_hygiene)]
 extern crate proc_macro;
 ---
 
-and `TokenStream`, above, needs to be imported
+and `TokenStream`, above, needs to be imported, along with the rest of the Rust AST
 
 --- imports+=
-use self::proc_macro::TokenStream; 
+use crate::proc_macro::*;
 ---
 
 Finally, we define the high-level flow of the macro - first, an AST is build to represent the pattern for which code needs to be generated; then, the generated Rust is produced by walking the AST.
 
 --- build an arbitrary parser from tokens
 let ast = self::ast::build(tokens);
-self::code::generate(ast)
+match ast {
+  Ok(tree) => self::code::generate(tree),
+  Err(ast::Error { .. }) => quote!(),
+}
 ---
 
 These steps are defined in the appropriate modules:
@@ -57,6 +65,3 @@ mod ast;
 mod code;
 ---
 
-@s Extending Ape
-
-To produce your own pattern types, you can simply extend the `Pattern` trait. This trait is described in the runtime crate.

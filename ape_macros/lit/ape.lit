@@ -51,7 +51,7 @@ use crate::proc_macro::*;
 Finally, we define the high-level flow of the macro - first, an AST is build to represent the pattern for which code needs to be generated; then, the generated Rust is produced by walking the AST.
 
 --- build an arbitrary parser from tokens
-let ast = self::ast::build(tokens);
+let ast = self::parsing::parse(tokens);
 match ast {
   Ok(tree) => self::code::generate(tree),
   Err(ast::Error { .. }) => quote!(),
@@ -62,6 +62,7 @@ These steps are defined in the appropriate modules:
 
 --- lib.rs+=
 mod ast;
+mod parsing;
 mod code;
 ---
 

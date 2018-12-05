@@ -1,0 +1,34 @@
+@title Parsing the macro contents
+
+@code_type rust .rs
+
+The parsing logic is in a single file
+
+--- parsing.rs
+@{parsing imports}
+
+@{parsing contents}
+---
+
+To parse the macro token contents into an AST, we first declare a custom `Result` and `Error` type to allow for bad syntax
+
+--- parser contents+=
+pub(crate) type Result<T> = std::result::Result<T, Error>;
+pub(crate) struct Error {
+  @{error fields}
+}
+---
+
+--- error fields
+---
+
+so that the function to build the AST returns a `Result` over the AST type
+
+--- parsing contents+=
+pub fn parse(tokens: TokenStream) -> Result<Pattern> {
+  @{parsing tokens}
+}
+---
+--- parsing tokens
+---
+

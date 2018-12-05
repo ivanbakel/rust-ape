@@ -5,16 +5,16 @@
 The AST code is a single file
 
 --- ast.rs+=
-@{imports}
+@{ast imports}
 
-@{contents}
+@{ast contents}
 ---
 
 @s The AST types
 
 A pattern is represented as a struct
 
---- contents+=
+--- ast contents+=
 pub(crate) struct Pattern {
   @{pattern fields}
 }
@@ -22,7 +22,7 @@ pub(crate) struct Pattern {
 
 with many possible variants
 
---- contents+=
+--- ast contents+=
 pub(crate) enum PatternType {
   @{ast variants}
 }
@@ -32,11 +32,11 @@ pub(crate) enum PatternType {
 pub variant: PatternType,
 ---
 
-@s Basic features
+@ss Basic features
 
 The unit of Ape's grammar is a Rust pattern.
 
---- imports+=
+--- ast imports+=
 use super::proc_macro::{TokenStream};
 ---
 
@@ -107,7 +107,7 @@ pub guard: Option<TokenStream>,
 
  * aliasing the matches of patterns, by `<ident> @ { ... }`
 
---- imports+=
+--- ast imports+=
 use super::proc_macro::Ident;
 ---
 
@@ -117,7 +117,7 @@ alias: Option<Ident>,
 
 Aliasing a sequence or repetition of matches will yield a `Vec` of the match values.
 
-@s Building values from the pattern
+@ss Building values from the pattern
 
 By default, Ape will make a successful parse return nothing. To instead return a value, we can end the pattern with a curly block `{}` containing Rust code. The code will have access to variables bound in the pattern. 
 
@@ -125,35 +125,12 @@ By default, Ape will make a successful parse return nothing. To instead return a
 pub code_block: Option<TokenStream>,
 ---
 
-@s Pattern subrules
+@ss Pattern subrules
 
 Ape does not have an intrinsic notion of rules and rule use. Instead, an Ape pattern can be embedded inside another pattern using `:{}` - a brace block preceded by a colon. The contents of the brace block will be evaluated as Rust code, and the result will be used to do matching.
 
 --- ast variants+=
 Runtime(TokenStream),
----
-
-@s Parsing the macro contents
-
-To parse the macro token contents into an AST, we first declare a custom `Result` and `Error` type to allow for bad syntax
-
---- contents+=
-pub(crate) type Result<T> = std::result::Result<T, Error>;
-pub(crate) struct Error {
-  @{error fields}
-}
----
---- error fields
----
-
-so that the function to build the AST returns a `Result` over the AST type
-
---- contents+=
-pub fn build(tokens: TokenStream) -> Result<Pattern> {
-  @{parsing tokens}
-}
----
---- parsing tokens
 ---
 
 @ss Feature precedence

@@ -29,7 +29,7 @@ pub(crate) enum PatternType {
 ---
   
 --- pattern fields+=
-variant: PatternType,
+pub variant: PatternType,
 ---
 
 @s Basic features
@@ -37,11 +37,11 @@ variant: PatternType,
 The unit of Ape's grammar is a Rust pattern.
 
 --- imports+=
-use super::proc_macro::{TokenTree};
+use super::proc_macro::{TokenStream};
 ---
 
 --- ast variants+=
-Raw(TokenTree),
+Raw(TokenStream),
 ---
 
 Ape supports all the expected PEG features:
@@ -102,13 +102,13 @@ Since the base units of the grammar are Rust patterns, several things are suppor
  * conditional matching - by `if` guards
 
 --- pattern fields+=
-guard: Option<TokenTree>,
+pub guard: Option<TokenStream>,
 ---
 
  * aliasing the matches of patterns, by `<ident> @ { ... }`
 
 --- imports+=
-use self::proc_macro::Ident;
+use super::proc_macro::Ident;
 ---
 
 --- pattern fields+=
@@ -122,7 +122,7 @@ Aliasing a sequence or repetition of matches will yield a `Vec` of the match val
 By default, Ape will make a successful parse return nothing. To instead return a value, we can end the pattern with a curly block `{}` containing Rust code. The code will have access to variables bound in the pattern. 
 
 --- pattern fields+=
-code_block: TokenTree,
+pub code_block: Option<TokenStream>,
 ---
 
 @s Pattern subrules
@@ -130,7 +130,7 @@ code_block: TokenTree,
 Ape does not have an intrinsic notion of rules and rule use. Instead, an Ape pattern can be embedded inside another pattern using `:{}` - a brace block preceded by a colon. The contents of the brace block will be evaluated as Rust code, and the result will be used to do matching.
 
 --- ast variants+=
-Runtime(TokenTree),
+Runtime(TokenStream),
 ---
 
 @s Parsing the macro contents
@@ -138,28 +138,33 @@ Runtime(TokenTree),
 To parse the macro token contents into an AST, we first declare a custom `Result` and `Error` type to allow for bad syntax
 
 --- contents+=
-pub(crate) type Result<T> = Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub(crate) struct Error {
   @{error fields}
 }
+---
+--- error fields
 ---
 
 so that the function to build the AST returns a `Result` over the AST type
 
 --- contents+=
-fn build(tokens: TokenStream) -> Result<Pattern> {
+pub fn build(tokens: TokenStream) -> Result<Pattern> {
   @{parsing tokens}
 }
 ---
+--- parsing tokens
+---
+
+@ss Feature precedence
 
 The precedence, from lowest to highest, of the syntax features is defined as follows:
- * code blocks
  * `/`
+ * aliasing
+ * code blocks
  * `~`
- * `->`
  * `if` guards
  * `*`, `+`, `**`, `++`, `?`
+ * `->`
  * `!`
- * aliasing
-
 

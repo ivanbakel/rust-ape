@@ -908,7 +908,7 @@ match next {
 If it is some kind of unit pattern, we transform it into the relevant `ParseTree` equivalent, and attempt to put it on the stack
 --- match the next piece
 piece @ Piece::Raw(_) | piece @ Piece::Runtime(_) => {
-  if let Some(val) = stack {
+  if let Some(_) = stack {
     break Err(Error {
       message: format!("Encountered an unexpected `{}`", piece),
       location: piece.span(),
@@ -936,7 +936,7 @@ impl Piece {
 If the next `Piece` is a bracketed group of `Piece`s - we attempt to build the parse-tree for it, and then put the tree on the stack
 --- match the next piece+=
 Piece::Bracketed(pieces) => {
-  if let Some(val) = stack {
+  if let Some(_) = stack {
     let piece = Piece::Bracketed(pieces);
     break Err(Error {
       message: format!("Encountered an unexpected `{}`", piece),
@@ -994,7 +994,7 @@ Fixity::Postfix => {
     * we apply the prefix operator to inner tree, and attempt to put the result on the stack
 --- match a unary operator based on fixity+=
 Fixity::Prefix => {
-  if let Some(val) = stack {
+  if let Some(_) = stack {
     break Err(Error {
       message: format!("Encountered an unexpected use of `{}`", operator),
       location: operator.span(),

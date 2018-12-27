@@ -32,10 +32,8 @@ pub fn arb_peg(tokens: TokenStream) -> TokenStream {
 ---
 
 
-Procedural macros require the `proc_macro` crate.
-
+Procedural macros require the `proc_macro` crate. We also enable some optional features, namely the ability to quasi-quote Rust code (useful for a macro), the ability to use `Span`s for error message purposes, the ability to use macros as items, and the ability to create error messages.
 --- crates+=
-#![feature(use_extern_macros)]
 #![feature(proc_macro_quote)]
 #![feature(proc_macro_span)]
 #![feature(proc_macro_hygiene)]

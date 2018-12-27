@@ -79,7 +79,7 @@ let matching = match pattern.variant {
   PatternType::Raw(rust_pattern) => {
     @{raw rust pattern}
   },
-  PatternType::Sequence(patterns) => {
+  PatternType::Sequence(mut patterns) => {
     @{sequence of patterns}
   },
   PatternType::Alternation(patterns) => {
@@ -247,7 +247,7 @@ To alternate patterns, we could build each one with the given body, to allow alt
 
 Instead, patterns are tested by using `or()`, and the body is run if there was a success
 --- alternation of patterns
-let alternatives = patterns.into_iter().map(|pattern| {
+let mut alternatives = patterns.into_iter().map(|pattern| {
   let generated = generate_pattern_with_body(pattern, quote!{});
   quote! { 
     {

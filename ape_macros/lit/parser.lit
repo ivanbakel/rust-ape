@@ -10,25 +10,1207 @@ The parsing logic is in a single file
 @{parsing contents}
 ---
 
+We make heavy use of types in the `proc_macro` crate
+
+--- parsing imports+=
+use proc_macro::*;
+---
+
 To parse the macro token contents into an AST, we first declare a custom `Result` and `Error` type to allow for bad syntax
 
---- parser contents+=
+--- parsing contents+=
 pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub(crate) struct Error {
   @{error fields}
 }
 ---
 
+The error carries a message, and also sometimes a `Span` - a representation of where in the file the error occured. This representation comes from Rust's own token construction.
 --- error fields
+message: String,
+location: Span,
 ---
 
 so that the function to build the AST returns a `Result` over the AST type
 
 --- parsing contents+=
-pub fn parse(tokens: TokenStream) -> Result<Pattern> {
+pub(crate) fn parse(tokens: TokenStream) -> Result<crate::ast::Pattern> {
   @{parsing tokens}
 }
 ---
+
+@s Parsing stages
+
+The parsing is broken into three stages
+  1. the construction of parse-tree pieces from raw tokens, which cannot fail
+  2. the construction of a precedence-based parse-tree from pieces, which may fail
+  3. the translation of the parse-tree into the Abstract Syntax (Rose) Tree, which may fail
 --- parsing tokens
+let pieces = {
+  @{tokens into pieces}
+};
+let parse_tree = {
+  @{pieces into parse-tree}
+}?;
+@{parse-tree into AST}
 ---
 
+@s Pieces from tokens
+
+The basic units of the parse-tree are
+  * raw Rust patterns
+  * runtime-embedded patterns - `{}`
+  * binary operators - `~`, `|`, ...
+  * unary operators - `->`, `!`, ...
+  * some bracketing of a sequence of the above
+
+--- parsing contents+=
+#[derive(Clone)]
+enum Piece {
+  Raw(TokenStream),
+  Runtime(TokenStream),
+  Binary(BinOp),
+  Unary(UnOp),
+  Bracketed(Vec<Piece>),
+}
+@{operators}
+---
+
+The possible binary operators are
+--- operators+=
+#[derive(Clone)]
+enum BinOpKind {
+  Sequence,
+  Alternation,
+  ZeroOrMoreWithDelim,
+  OneOrMoreWithDelim,
+}
+---
+but we also want to be able to record *where* an operator was found in the file, so we include a `Span` on the struct
+--- operators+=
+#[derive(Clone)]
+struct BinOp {
+  kind: BinOpKind,
+  location: Span,
+}
+impl BinOp {
+  fn span(&self) -> Span {
+    self.location
+  }
+}
+---
+
+The possible unary (both prefix and postfix) operators are
+--- operators+=
+#[derive(Clone)]
+enum UnOpKind {
+  Alias(Ident),
+  Guard(TokenStream),
+  CodeBlock(TokenStream),
+  ZeroOrMore,
+  OneOrMore,
+  Optional,
+  Negation,
+  Lookahead,
+}
+---
+Some of these are not obviously unary operators (aliasing, guards) - but they are represented in this way to simplify the parsing process, since they have no overloaded behaviour, and do not relate two patterns. Similarly to binary operators, we also define
+--- operators+=
+#[derive(Clone)]
+struct UnOp {
+  kind: UnOpKind,
+  location: Span,
+}
+impl UnOp {
+  fn span(&self) -> Span {
+    self.location
+  }
+}
+---
+
+We display operators for error-message purposes.
+--- operators+=
+impl std::fmt::Display for BinOp {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    use self::BinOpKind::*;
+    let repr = match self.kind {
+      Sequence => "~",
+      Alternation => "|",
+      ZeroOrMoreWithDelim => "**",
+      OneOrMoreWithDelim => "++",
+    };
+    write!(f, "{}", repr)
+  }
+}
+impl std::fmt::Display for UnOp {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    use self::UnOpKind::*;
+    let repr = match self.kind {
+      Alias(_) => "alias `@`",
+      Guard(_) => "if guard",
+      CodeBlock(_) => "=> { .. }",
+      ZeroOrMore => "*",
+      OneOrMore => "+",
+      Optional => "?",
+      Negation => "!",
+      Lookahead => "->",
+    };
+    write!(f, "{}", repr)
+  }
+}
+---
+as well as pieces
+--- parsing contents+=
+impl std::fmt::Display for Piece {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    match self {
+      Piece::Raw(contents) => write!(f, "{}", contents),
+      Piece::Runtime(contents) => write!(f, "{}", contents),
+      Piece::Binary(operator) => write!(f, "{}", operator),
+      Piece::Unary(operator) => write!(f, "{}", operator),
+      Piece::Bracketed(contents) => {
+        write!(f, "(")?;
+        for piece in contents.iter() {
+          write!(f, "{}", piece)?;
+        }
+        write!(f, ")")
+      },
+    }
+  }
+}
+---
+For error messages, it also helps to be able to talk about the location of a piece 
+ * raw and runtime `Pice`s have spans which are the `join()` of their contents tokens
+ * we've already defined the span of operators
+ * the span of a bracketed group is the join of all the spans of the inner pieces
+--- parsing contents+=
+fn join_spans<I : Iterator<Item=Span>>(iterator: I) -> Span {
+  let mut accumulator : Option<Span> = None;
+  for val in iterator {
+    if let Some(span) = accumulator {
+      accumulator = span.join(val);
+    } else {
+      accumulator = Some(val);
+    }
+  }
+  accumulator.unwrap()
+}
+impl Piece {
+  fn span(&self) -> Span {
+    use self::Piece::*;
+    match self {
+      Raw(tokens) | Runtime(tokens) => join_spans(tokens.clone().into_iter().map(|token| token.span())),
+      Binary(operator) => operator.span(),
+      Unary(operator) => operator.span(),
+      Bracketed(contents) => join_spans(contents.iter().map(|piece| piece.span())),
+    }
+  }
+}
+---
+
+Since the parsing logic is recursive for brackets, we define the logic in a recursive helper function, and invoke it on the given token-stream
+--- tokens into pieces
+fn parse_tokens_into_pieces(tokens: TokenStream) -> Vec<Piece> {
+   @{parse the tokens into pieces}
+}
+
+parse_tokens_into_pieces(tokens)
+---
+
+Pieces are built one at a time from iterating over the `TokenStream` - each group of tokens produces one `Piece`, so we can build the collection of `Piece`s iteratively.
+--- parse the tokens into pieces  
+let mut token_iter = tokens.into_iter();
+
+let mut pieces = vec![];
+
+while let Some(piece) = {
+  @{turn the next set of tokens into a piece}
+} {
+  pieces.push(piece);
+}
+pieces
+---
+
+`Piece`s which are non-raw patterns are very simple to detect and construct. The raw pattern is only constructed as a fallback value.
+To parse a group of tokens as a `Piece`, we can then follow a simple algorithm
+ * initialise a collection of tokens to store a raw pattern 
+ * if we can parse the next group of tokens as a non-raw pattern, then
+   * if the raw pattern collection is empty, return the non-raw pattern as a `Piece`
+   * otherwise, return the raw pattern collection as a `Piece`
+ * otherwise, put the current token in the raw pattern collection
+
+Converting an iterator of Rust tokens back into a `TokenStream` requires a trait
+--- parsing imports+=
+use std::iter::FromIterator;
+---
+
+If at any point we run out of tokens, then
+ * if the raw pattern collection is non-empty, return the raw pattern collection
+ * otherwise return nothing
+
+--- turn the next set of tokens into a piece
+fn try_parse_tokens_as_non_raw_pattern(token_iter: &mut token_stream::IntoIter) -> Option<Piece> {
+  @{try to parse tokens into a non-raw pattern}
+}
+
+let mut raw_pattern = vec![];
+
+loop {
+  let mut current_iter = token_iter.clone();
+  if let Some(piece) = try_parse_tokens_as_non_raw_pattern(&mut current_iter) {
+    break if raw_pattern.is_empty() {
+      token_iter = current_iter;
+      Some(piece)
+    } else {
+      Some(Piece::Raw(TokenStream::from_iter(raw_pattern.into_iter())))
+    };
+  }
+
+  if let Some(token) = token_iter.next() {
+    raw_pattern.push(token)
+  } else {
+    break if raw_pattern.is_empty() {
+      None
+    } else {
+      Some(Piece::Raw(TokenStream::from_iter(raw_pattern.into_iter())))
+    };
+  }
+}
+---
+
+To detect a non-raw pattern, we have unambiguous rules - if at any point we run out of tokens, we fail entirely.
+--- try to parse tokens into a non-raw pattern
+match token_iter.next()? {
+  @{try to parse the next token into a non-raw pattern}
+}
+---
+An `if` is the start of a guard. An identifier followed by a `@` is an alias, and no other non-raw pattern contains an identifier
+--- try to parse the next token into a non-raw pattern+=
+TokenTree::Ident(ref identifier) if identifier.to_string() == "if" => {
+  @{match tokens for a guard}
+},
+TokenTree::Ident(identifier) => {
+  if let TokenTree::Punct(punctuation) = token_iter.next()? {
+    if punctuation.as_char() == '@' {
+      let span = identifier.span().join(punctuation.span()).unwrap();
+      Some(Piece::Unary(UnOp { 
+        kind: UnOpKind::Alias(identifier), 
+        location: span,  
+      }))
+    } else {
+      None
+    }
+  } else {
+    None
+  }
+},
+---
+A punctuation mark is potentially the start of an operator
+--- try to parse the next token into a non-raw pattern+=
+TokenTree::Punct(op_start) => {
+  match op_start.as_char() {
+    @{try to parse the punctuation as an operator}
+  }
+},
+---
+A group is possibly significant in 2 ways - if it is a curly-braced block, it is a runtime pattern, and if it is a round-braced block containing more than just a raw pattern, it is a bracketed group of patterns.
+--- try to parse the next token into a non-raw pattern+=
+TokenTree::Group(ref group) if group.delimiter() == Delimiter::Brace => {
+  Some(Piece::Runtime(group.stream()))
+},
+TokenTree::Group(ref group) if group.delimiter() == Delimiter::Parenthesis => {
+  let bracketed_pieces = parse_tokens_into_pieces(group.stream());
+  if let [Piece::Raw(_)] = bracketed_pieces[..] {
+    None
+  } else {
+    Some(Piece::Bracketed(bracketed_pieces))
+  }
+},
+---
+Everything else is meaningless
+--- try to parse the next token into a non-raw pattern+=
+_ => None,
+---
+
+@ss Building a guard
+
+A guard is built in a similar way to a raw pattern, but much simpler - every token which cannot be parsed as a non-raw pattern is put into the guard.
+--- match tokens for a guard
+let mut guard = vec![];
+
+loop {
+  let mut current_iter = token_iter.clone();
+  if let Some(_) = try_parse_tokens_as_non_raw_pattern(&mut current_iter) {
+    break;
+  } else {
+    if let Some(token) = token_iter.next() {
+      guard.push(token);
+    } else {
+      break;
+    }
+  }
+}
+
+let guard_tokens = TokenStream::from_iter(guard.into_iter());
+let span = join_spans(guard_tokens.clone().into_iter().map(|token| token.span()));
+Some(Piece::Unary(UnOp {
+  kind: UnOpKind::Guard(guard_tokens),
+  location: span,
+}))
+---
+
+
+@ss Detecting an operator
+
+Some operators are immediately detectable - `?` and `!`, for example, are single characters and don't prefix any other operator. 
+--- try to parse the punctuation as an operator+=
+'?' => Some(Piece::Unary(UnOp { kind: UnOpKind::Optional, location: op_start.span() })),
+'!' => Some(Piece::Unary(UnOp { kind: UnOpKind::Negation, location: op_start.span() })),
+'|' => Some(Piece::Binary(BinOp { kind: BinOpKind::Alternation, location: op_start.span() })),
+'~' => Some(Piece::Binary(BinOp { kind: BinOpKind::Sequence, location: op_start.span() })),
+---
+Some operators prefix others, so it matters if they are followed immediately by more punctuation or not. `* *` is `*` twice, but `**` is the delimited version.
+--- try to parse the punctuation as an operator+=
+'*' => {
+  if let Spacing::Alone = op_start.spacing() {
+    Some(Piece::Unary(UnOp { kind: UnOpKind::ZeroOrMore, location: op_start.span() }))
+  } else {
+    match token_iter.next()? {
+      TokenTree::Punct(ref second_part) if second_part.as_char() == '*' 
+        => Some(Piece::Binary(BinOp { 
+          kind: BinOpKind::ZeroOrMoreWithDelim, 
+          location: op_start.span().join(second_part.span()).unwrap() 
+        })),
+      _ => Some(Piece::Unary(UnOp { kind: UnOpKind::ZeroOrMore, location: op_start.span() })),
+    }
+  }
+},
+'+' => {
+  if let Spacing::Alone = op_start.spacing() {
+    Some(Piece::Unary(UnOp { kind: UnOpKind::OneOrMore, location: op_start.span() }))
+  } else {
+    match token_iter.next()? {
+      TokenTree::Punct(ref second_part) if second_part.as_char() == '+' 
+        => Some(Piece::Binary(BinOp {
+          kind: BinOpKind::OneOrMoreWithDelim,
+          location: op_start.span().join(second_part.span()).unwrap(),
+        })),
+      _ => Some(Piece::Unary(UnOp { kind: UnOpKind::OneOrMore, location: op_start.span() })),
+    }
+  }
+},
+---
+Finally, some operators are multi-character
+--- try to parse the punctuation as an operator+=
+'-' => {
+  let next_part = token_iter.next()?;
+  if let TokenTree::Punct(next_punct) = next_part {
+    if next_punct.as_char() == '>' && op_start.spacing() == Spacing::Joint {
+      Some(Piece::Unary(UnOp { 
+        kind: UnOpKind::Lookahead, 
+        location: op_start.span().join(next_punct.span()).unwrap(),
+      }))
+    } else {
+      None
+    }
+  } else {
+    None
+  }
+},
+'=' => {
+  let next_part = token_iter.next()?;
+  if let TokenTree::Punct(next_punct) = next_part { 
+    if next_punct.as_char() == '>' && op_start.spacing() == Spacing::Joint {
+      let expected_codeblock = token_iter.next()?;
+      if let TokenTree::Group(group) = expected_codeblock {
+        if group.delimiter() == Delimiter::Brace {
+          Some(Piece::Unary(UnOp { 
+            kind: UnOpKind::CodeBlock(group.stream()),
+            location: op_start.span().join(next_punct.span()).unwrap().join(group.span()).unwrap(),
+          }))
+        } else {
+          None
+        }
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  } else {
+    None
+  }
+},
+---
+And anything else is nonsense.
+--- try to parse the punctuation as an operator+=
+_ => None,
+---
+
+@s Trees from pieces
+
+The parsetree is unsuprising, based on our definition of the `Piece` - the only added structure is that we now pair statements under binary operators, and place statements underneath their unary operators.
+--- parsing contents+=
+enum ParseTree {
+  Raw(TokenStream),
+  Runtime(TokenStream),
+  Bracketed(Box<ParseTree>),
+  Unary {
+    operator: UnOp,
+    on: Box<ParseTree>,
+  },
+  Binary {
+    operator: BinOp,
+    left: Box<ParseTree>,
+    right: Box<ParseTree>,
+  },
+}
+---
+
+@ss Feature precedence
+
+To construct the tree, we introduce the concept of *operator precedence*
+--- parsing contents+=
+type Precedence = usize;
+---
+where a higher value is higher precedence.
+
+The precedence, from lowest to highest, of the syntax features is defined as follows:
+ * `/`
+ * aliasing
+ * code blocks
+ * `~`
+ * `if` guards
+ * `*`, `+`, `**`, `++`, `?`
+ * `->`
+ * `!`
+
+We can then define the precendece of operators
+--- operators +=
+impl BinOp {
+  fn get_precedence(&self) -> Precedence {
+    use self::BinOpKind::*;
+    match self.kind {
+      Alternation => 1,
+      Sequence => 4,
+      ZeroOrMoreWithDelim => 6,
+      OneOrMoreWithDelim => 6,
+    }
+  }
+}
+
+impl UnOp {
+  fn get_precedence(&self) -> Precedence {
+    use self::UnOpKind::*;
+    match self.kind {
+      Alias(_) => 2,
+      Guard(_) => 5, 
+      CodeBlock(_) => 3,
+      ZeroOrMore => 6,
+      OneOrMore => 6,
+      Optional => 6,
+      Negation => 8,
+      Lookahead => 7,
+    }
+  }
+}
+---
+
+For unary operators, we will want to consider whether they are prefix or postfix operators - if an operator '^' is prefix, then `^A * B` and `A * ^B`
+--- operators+=
+#[derive(PartialEq, Eq)]
+enum Fixity {
+  Prefix,
+  Postfix,
+}
+
+impl UnOp {
+  fn get_fixity(&self) -> Fixity {
+    use self::UnOpKind::*;
+    use self::Fixity::*;
+
+    match self.kind { 
+      Alias(_) => Prefix,
+      Guard(_) => Postfix, 
+      CodeBlock(_) => Postfix,
+      ZeroOrMore => Postfix,
+      OneOrMore => Postfix,
+      Optional => Postfix,
+      Negation => Prefix,
+      Lookahead => Prefix,
+    }
+  }
+}
+---
+
+For binary operators, we also want to define their associativity - we allow three values
+ * left associative
+ * right associative
+ * no associativity - in this case, unbracketed use will cause an error, because the operator has no sensible association. This will be used for `**` and `++`, to avoid surprising users.
+--- operators +=
+enum Associativity {
+  Left,
+  Right,
+  None,
+}
+
+impl BinOp {
+  fn get_associativity(&self) -> Associativity {
+    use self::BinOpKind::*;
+    use self::Associativity::*;
+    match self.kind {
+      Alternation => Right,
+      Sequence => Left,
+      ZeroOrMoreWithDelim => None,
+      OneOrMoreWithDelim => None,
+    }
+  }
+}
+---
+
+When building the parse-tree, we will repeatedly append to an existing tree, either by applying a unary operator, or a binary operator with some other tree. 
+--- parsing contents
+impl ParseTree {
+  @{appending to the parse-tree}
+}
+--- 
+Methods for this logic may return a new tree at the top level, so the existing tree is passed in by ownership, and the new tree (which may be the same struct as the original) is returned. 
+--- appending to the parse-tree+=
+fn apply_unary(self, operator: UnOp) -> Self {
+  use self::ParseTree::*;
+
+  match self {
+    @{appending a unary operator}
+  }
+}
+---
+    
+When appending a unary operator to a unary application, we wrap the existing parse-tree if 
+ * the application precedence is greater, or
+ * the application fixity is the same as the operator fixity
+and recurse otherwise
+--- appending a unary operator+=
+Unary {
+  operator: application_operator,
+  on,
+} => {
+  if application_operator.get_precedence() > operator.get_precedence() ||
+      application_operator.get_fixity() == operator.get_fixity() {
+    Unary {
+      operator,
+      on: Box::new(Unary {
+        operator: application_operator,
+        on: on,
+      }),
+    }
+  } else {
+    Unary {
+      operator: application_operator,
+      on: Box::new(on.apply_unary(operator)),
+    }
+  }
+},
+---
+
+When appending a unary operator to a binary application, we wrap the existing parse-tree if
+ * the application precedence is greater
+otherwise, we recurse based on the fixity of the operator - prefix operators recurse left, and postfix operators recurse right
+--- appending a unary operator+=
+Binary {
+  operator: application_operator,
+  left,
+  right,
+} => {
+  if application_operator.get_precedence() > operator.get_precedence() {
+    Unary {
+      operator,
+      on: Box::new(Binary {
+        operator: application_operator,
+        left,
+        right,
+      }),
+    }
+  } else {
+    if operator.get_fixity() == Fixity::Prefix {
+      Binary {
+        operator: application_operator,
+        left: Box::new(left.apply_unary(operator)),
+        right,
+      }
+    } else {
+      Binary {
+        operator: application_operator,
+        left,
+        right: Box::new(right.apply_unary(operator)),
+      }
+    }
+  }
+},
+---
+
+For bracketed, raw, or runtime-embedded parse-tree leaves, we always wrap
+--- appending a unary operator+=
+non_recursive => Unary {
+  operator,
+  on: Box::new(non_recursive),
+},
+---
+
+Appending to the tree may fail e.g. when a binary operator with no associativity is used twice, so the binary method will return a `Result`.
+--- appending to the parse-tree +=
+fn apply_binary(self, operator: BinOp, right: ParseTree) -> Result<Self> {
+  use self::ParseTree::*;
+  use self::Associativity::*;
+
+  match self {
+    @{appending a binary operator}
+  }
+}
+---
+
+Appending to a unary application, we wrap when
+ * the application is postfix - `A^ * B` will always be interpreted as `(A^) * B`
+ * the application is prefix, and has higher precedence than the operator
+--- appending a binary operator+=
+Unary {
+  operator: application_operator,
+  on,
+} => {
+  if application_operator.get_fixity() == Fixity::Postfix ||
+    (application_operator.get_fixity() == Fixity::Prefix && 
+     application_operator.get_precedence() > operator.get_precedence()) {
+    Ok(Binary {
+      operator,
+      left: Box::new(Unary {
+        operator: application_operator,
+        on,
+      }),
+      right: Box::new(right),
+    })
+  } else {
+    Ok(Unary {
+      operator: application_operator,
+      on: Box::new(on.apply_binary(operator, right)?),
+    })
+  }
+},
+---
+
+Appending to a binary application, we wrap when the application has higher precedence. If precendences are equal
+ * if the associativities agree and are not none, then
+   * if the operators are left-associative, a new application is built with the value of `right` in the right leaf, and the application in the left leaf
+   * otherwise, the parse-tree is recursed on until the right-most node of equal precedence is found, and the value of `right` is appended there
+ * otherwise, we have an error - attempting to build a tree with conflicting associativity is a recipe for surprise
+If the operator precedence is greater than the application precedence, we recurse on the right leaf
+
+--- appending a binary operator+=
+Binary {
+  operator: application_operator,
+  left: application_left,
+  right: application_right,
+} => {
+  if application_operator.get_precedence() > operator.get_precedence() {
+    Ok(Binary {
+      operator,
+      left: Box::new(Binary {
+        operator: application_operator,
+        left: application_left,
+        right: application_right,
+      }),
+      right: Box::new(right),
+    })
+  } else if application_operator.get_precedence() == operator.get_precedence() {
+    match (application_operator.get_associativity(), operator.get_associativity()) {
+      (Associativity::None, _) |
+      (_, Associativity::None) |
+      (Associativity::Left, Associativity::Right) |
+      (Associativity::Right, Associativity::Left) => {
+         Err(Error {
+           message: format!("Can't combine `{}` and `{}` without bracketing - their use is ambiguous", application_operator, operator),
+           location: application_operator.span().join(operator.span()).unwrap(),
+         })
+      },
+      (Associativity::Left, Associativity::Left) => {
+        Ok(Binary {
+          operator,
+          left: Box::new(Binary {
+            operator: application_operator,
+            left: application_left,
+            right: application_right,
+          }),
+          right: Box::new(right),
+        })
+      },
+      (Associativity::Right, Associativity::Right) => {
+        @{apply the binary operator to the rightmost node} 
+      },
+    }
+  } else {
+    Ok(Binary {
+      operator: application_operator,
+      left: application_left,
+      right: Box::new(application_right.apply_binary(operator, right)?),
+    })
+  }
+},
+---
+
+The most complex construction is in the case of combining two right-associative operators - we have to deconstruct the tree to locate the appropriate node, substitute in for it, and then rebuild the tree with the new construct. This is done by means of a helper function to account for the recursive logic
+--- apply the binary operator to the rightmost node        
+fn insert_at_rightmost_binary_application(tree: ParseTree, operator: BinOp, right: ParseTree) -> ParseTree {
+  match tree {
+    @{insert at rightmost binary application}
+  }
+}
+
+Ok(insert_at_rightmost_binary_application(Binary {
+  operator: application_operator,
+  left: application_left,
+  right: application_right,
+}, operator, right))
+---
+
+The current parse-tree node is the rightmost node if it is not a binary application,
+--- insert at rightmost binary application
+rightmost @ Unary { .. } |
+rightmost @ Raw(..) |
+rightmost @ Runtime(..) |
+rightmost @ Bracketed(..)  => {
+  Binary {
+    operator,
+    left: Box::new(rightmost),
+    right: Box::new(right),
+  }
+},
+---
+or it is a binary application of greater precedence than the application we are trying to construct. Otherwise, we must be at a binary node of equal precedence (no binary node of smaller precedence can appear in the tree here) so we recurse into the right leaf
+--- insert at rightmost binary application+=
+Binary {
+  operator: application_operator,
+  left: application_left,
+  right: application_right,
+} => {
+  if application_operator.get_precedence() > operator.get_precedence() {
+    Binary {
+      operator,
+      left: Box::new(Binary {
+        operator: application_operator,
+        left: application_left,
+        right: application_right,
+      }),
+      right: Box::new(right),
+    }
+  } else {  
+    Binary {
+      operator: application_operator,
+      left: application_left,
+      right: Box::new(insert_at_rightmost_binary_application(*application_right, operator, right)),
+    }
+  }
+}
+---
+
+Finally, for bracketed, raw, or runtime-embedded parse-tree leaves, we always wrap
+--- appending a binary operator+=
+non_recursive => {
+  Ok(Binary {
+    operator,
+    left: Box::new(non_recursive),
+    right: Box::new(right),
+  })
+},
+---
+
+@ss Complete logic
+
+To turn pieces into a tree, we introduce a helper function which builds a partial tree to some minimum precedence - that is, it tries to build the largest tree possible from the iterator of pieces, without using pieces with precendence lower than the given minimum. To do this, we need to be able to go back and forth over the iterator
+--- parsing imports+=
+extern crate backtracking_iterator;
+use self::backtracking_iterator::*;
+---
+
+--- pieces into parse-tree
+fn build_parse_tree_with_minimum_precedence<B>(iterator: &mut B, minimum_precedence: Precedence)
+  -> Result<ParseTree> where B: BacktrackingIterator<Item=Piece> {
+  @{build the largest parse-tree with the given precedence}
+}
+---
+
+This helper function also helpfully applies to the tree as a whole - simply build the biggest possible tree with effectively no minimum, and you will have constructed the entire tree.
+--- pieces into parse-tree
+let mut bt_record = BacktrackingRecorder::new(pieces.into_iter());
+let mut backtracking_iter = bt_record.copying();
+
+build_parse_tree_with_minimum_precedence(&mut backtracking_iter, 0)
+---
+
+We can now describe the full logic of the parse-tree construction, using an `Option` value as an expression stack, and looping until we consume the desired tokens
+--- build the largest parse-tree with the given precedence
+let mut stack : Option<ParseTree> = None;
+loop {
+  @{build the largest parse-tree with the next piece}
+}
+---
+
+First we inspect the next `Piece` without advancing the iterator - if there is no next piece, we return the stack
+--- build the largest parse-tree with the next piece+=
+if let Some(next) = iterator.peek() {
+  match next {
+    @{peek at the next piece}
+  }
+} else {
+  break if let Some(val) = stack {
+    Ok(val)
+  } else {
+    Err(Error {
+      message: format!("Unexpected end of input while trying to build the pattern."),
+      location: Span::call_site(), 
+    })
+  }
+}
+---
+If the next `Piece` we take is of lower a precedence than our minimum, then
+  * if is a binary operator or a postfix operator, we go to return the stack
+  * if it is a prefix operator, we continue
+Otherwise, we do nothing
+--- peek at the next piece+=
+Piece::Binary(ref operator) if operator.get_precedence() < minimum_precedence => {
+  break if let Some(val) = stack {
+    Ok(val)
+  } else {
+    Err(Error {
+      message: format!("Encountered a use of `{}` with nothing to apply it to.", operator),
+      location: operator.span(),
+    })
+  }
+},
+Piece::Unary(ref operator) if operator.get_precedence() < minimum_precedence && operator.get_fixity() == Fixity::Postfix => {
+  break if let Some(val) = stack {
+    Ok(val)
+  } else {
+    Err(Error {
+      message: format!("Encountered a use of `{}` with nothing to apply it to.", operator),
+      location: operator.span(),
+    })
+  }
+},
+_ => {},
+---
+
+We now know the next piece is safe to consume, so we take it off the iterator, and continue based on what it is
+--- build the largest parse-tree with the next piece+=
+let next = iterator.next().unwrap();
+match next {
+  @{match the next piece}
+}
+---
+
+If it is some kind of unit pattern, we transform it into the relevant `ParseTree` equivalent, and attempt to put it on the stack
+--- match the next piece
+piece @ Piece::Raw(_) | piece @ Piece::Runtime(_) => {
+  if let Some(val) = stack {
+    break Err(Error {
+      message: format!("Encountered an unexpected `{}`", piece),
+      location: piece.span(),
+    })
+  } else {
+    let tree = piece.to_parsetree();
+    stack = Some(tree);
+  }
+},
+---
+
+The transformation helper is exactly what you would expect.
+--- parsing contents+=
+impl Piece {
+  fn to_parsetree(self) -> ParseTree {
+    match self {
+      Piece::Raw(contents) => ParseTree::Raw(contents),
+      Piece::Runtime(contents) => ParseTree::Runtime(contents),
+      _ => unreachable!(),
+    }
+  }
+}
+---
+
+If the next `Piece` is a bracketed group of `Piece`s - we attempt to build the parse-tree for it, and then put the tree on the stack
+--- match the next piece+=
+Piece::Bracketed(pieces) => {
+  if let Some(val) = stack {
+    let piece = Piece::Bracketed(pieces);
+    break Err(Error {
+      message: format!("Encountered an unexpected `{}`", piece),
+      location: piece.span(),
+    })
+  } else {
+    let mut bt_record = BacktrackingRecorder::new(pieces.into_iter());
+    let mut backtracking_iter = bt_record.copying();
+    let inner_tree = build_parse_tree_with_minimum_precedence(&mut backtracking_iter, 0)?;
+    let tree = ParseTree::Bracketed(Box::new(inner_tree));
+    stack = Some(tree);
+  }
+},
+---
+
+If it is a binary operator, then it is definitely of a suitable precedence - we attempt to build its right-hand side by constructing a parse-tree with minimum precedence equal to that of the operator, and then attempt to apply the result to the stack.
+--- match the next piece+=
+Piece::Binary(operator) => {
+  let rhs = build_parse_tree_with_minimum_precedence(iterator, operator.get_precedence())?;
+
+  if let Some(val) = stack {
+    stack = Some(val.apply_binary(operator, rhs)?);
+  } else {
+    break Err(Error {
+      message: format!("Encountered a use of `{}` with no left-hand side.", operator),
+      location: operator.span(),
+    })
+  }
+},
+---
+
+If it's a unary operator
+--- match the next piece+=
+Piece::Unary(operator) => {
+  match operator.get_fixity() {
+    @{match a unary operator based on fixity}
+  }
+}
+---
+  * if it's a postfix operator, then it is of a suitable precedence - we attempt to apply it to the stack
+--- match a unary operator based on fixity+=
+Fixity::Postfix => {
+  if let Some(val) = stack {
+    stack = Some(val.apply_unary(operator));
+  } else {
+    break Err(Error {
+      message: format!("Encountered a use of `{}` with no preceding pattern.", operator),
+      location: operator.span(),
+    })
+  }
+},
+---
+  * if it's a prefix operator, then
+    * we attempt to build a parse-tree for it to apply to - this has minimum precedence equal to the maximum of the current minimum and the precedence of the operator
+    * we apply the prefix operator to inner tree, and attempt to put the result on the stack
+--- match a unary operator based on fixity+=
+Fixity::Prefix => {
+  if let Some(val) = stack {
+    break Err(Error {
+      message: format!("Encountered an unexpected use of `{}`", operator),
+      location: operator.span(),
+    })
+  } else {
+    let applied_to = build_parse_tree_with_minimum_precedence(iterator, Precedence::max(minimum_precedence, operator.get_precedence()))?;
+    stack = Some(applied_to.apply_unary(operator));
+  }
+}
+---
+The final case is unreachable, since we've covered it all above.
+--- match the next piece+=
+_ => unreachable!(),
+---
+
+@s AST from the parse-tree
+
+Now that we have constructed the parse-tree, we have a data-structure which is totally correct with regards to operators and their precedence and associativity. This makes constructing the AST relatively simple, and also allows us to introduce some final steps of logic - mostly to do with trying to catch user error.
+
+The bulk of the AST-building logic will be recursive, so we involve a helper function, and call it on our root node.
+--- parse-tree into AST
+fn build_ast_from_parsetree(parse_tree: ParseTree) -> Result<crate::ast::Pattern> {
+  @{build an AST from the parse-tree}
+}
+
+build_ast_from_parsetree(parse_tree)
+---
+
+What node of the AST we build depends on the node of the parse-tree we are inspecting
+ * raw and runtime patterns are translated into their AST equivalents, with no extra data 
+ * for the bracketed node, the brackets are simply discarded and the inner node is returned
+--- build an AST from the parse-tree
+match parse_tree {
+  ParseTree::Raw(tokens) => Ok(crate::ast::Pattern {
+    variant: crate::ast::PatternType::Raw(tokens),
+    guard: None,
+    alias: None,
+    code_block: None,
+  }),
+  ParseTree::Runtime(tokens) => Ok(crate::ast::Pattern {
+    variant: crate::ast::PatternType::Runtime(tokens),
+    guard: None,
+    alias: None,
+    code_block: None,
+  }),
+  ParseTree::Bracketed(inner_node) => build_ast_from_parsetree(*inner_node),
+  ParseTree::Unary { operator, on } => {
+    @{build an AST and then apply a unary operator}
+  },
+  ParseTree::Binary { operator, left, right } => {
+    @{build an AST and then apply a binary operator}
+  },
+}
+---
+ * binary applications are built by recursing based on their associativity
+   * sequencing is left-associative, so the left-most sequence application is found, and the leaves are combined. Similarly, but in reverse, for alternation
+   * the binary repetition operators have no associativity, so they require no combination
+--- build an AST and then apply a binary operator
+use self::BinOpKind::*;
+match operator.kind {
+  ZeroOrMoreWithDelim => Ok(crate::ast::Pattern {
+    variant: crate::ast::PatternType::Repetition {
+      pattern: Box::new(build_ast_from_parsetree(*left)?),
+      at_least: None,
+      at_most: None,
+      delimiter: Some(Box::new(build_ast_from_parsetree(*right)?)),
+    },
+    guard: None,
+    alias: None,
+    code_block: None,
+  }),
+  OneOrMoreWithDelim => Ok(crate::ast::Pattern {
+    variant: crate::ast::PatternType::Repetition {
+      pattern: Box::new(build_ast_from_parsetree(*left)?),
+      at_least: Some(1),
+      at_most: None,
+      delimiter: Some(Box::new(build_ast_from_parsetree(*right)?)),
+    },
+    guard: None,
+    alias: None,
+    code_block: None,
+  }),
+  Sequence => {
+    let mut leaves = vec![build_ast_from_parsetree(*right)?];
+ 
+    let mut current = *left;
+    while let ParseTree::Binary { operator: BinOp { kind, .. }, left: curr_left, right: curr_right } = current {
+      if let Sequence = kind {
+        leaves.push(build_ast_from_parsetree(*curr_right)?);
+        current = *curr_left;
+      } else {
+        break;
+      }
+    }
+    
+    Ok(crate::ast::Pattern {
+      variant: crate::ast::PatternType::Sequence(leaves),
+      guard: None,
+      alias: None,
+      code_block: None,
+    })
+  },
+  Alternation => {
+    let mut leaves = vec![build_ast_from_parsetree(*left)?];
+ 
+    let mut current = *right;
+    while let ParseTree::Binary { operator: BinOp { kind, .. }, left: curr_left, right: curr_right } = current {
+      if let Alternation = kind {
+        leaves.push(build_ast_from_parsetree(*curr_left)?);
+        current = *curr_right;
+      } else {
+        break;
+      }
+    }
+    
+    Ok(crate::ast::Pattern {
+      variant: crate::ast::PatternType::Alternation(leaves),
+      guard: None,
+      alias: None,
+      code_block: None,
+    })
+  },
+}
+---
+ * unary operators are applied to the result of building the AST of their contents
+   * for guards, aliases, and code blocks, if they are already defined on the inner AST, we raise an error 
+--- build an AST and then apply a unary operator
+let inner = build_ast_from_parsetree(*on)?;
+
+use self::UnOpKind::*;
+let operator_span = operator.span();
+match operator.kind {
+  Alias(identifier) => {
+    if let Some(existing) = inner.alias {
+      Err(Error {
+        message: format!("Tried to alias a pattern with `{}` after it already had the alias `{}`.", identifier, existing),
+        location: operator_span,
+      })
+    } else {
+      Ok(crate::ast::Pattern {
+        variant: inner.variant,
+        guard: inner.guard,
+        alias: Some(identifier),
+        code_block: inner.code_block,
+      })
+    }
+  },
+  Guard(tokens) => {
+    if let Some(existing) = inner.guard {
+      Err(Error {
+        message: format!("Unexpected guard after a pattern which already has a guard."),
+        location: operator_span,
+      })
+    } else {
+      Ok(crate::ast::Pattern {
+        variant: inner.variant,
+        guard: Some(tokens),
+        alias: inner.alias,
+        code_block: inner.code_block,
+      })
+    }
+  },
+  CodeBlock(tokens) => {
+    if let Some(existing) = inner.code_block {
+      Err(Error {
+        message: format!("Unexpected code block after a pattern which already has a code block."),
+        location: operator_span,
+      })
+    } else {
+      Ok(crate::ast::Pattern {
+        variant: inner.variant,
+        guard: inner.guard,
+        alias: inner.alias,
+        code_block: Some(tokens),
+      })
+    }
+  },
+  ZeroOrMore => Ok(crate::ast::Pattern {
+    variant: crate::ast::PatternType::Repetition {
+      pattern: Box::new(inner),
+      at_least: None,
+      at_most: None,
+      delimiter: None,
+    },
+    guard: None,
+    alias: None,
+    code_block: None,
+  }),
+  OneOrMore => Ok(crate::ast::Pattern {
+    variant: crate::ast::PatternType::Repetition {
+      pattern: Box::new(inner),
+      at_least: Some(1),
+      at_most: None,
+      delimiter: None,
+    },
+    guard: None,
+    alias: None,
+    code_block: None,
+  }),
+  Optional => Ok(crate::ast::Pattern {
+    variant: crate::ast::PatternType::Optional(Box::new(inner)),
+    guard: None,
+    alias: None,
+    code_block: None,
+  }),
+  Negation => Ok(crate::ast::Pattern {
+    variant: crate::ast::PatternType::Negation(Box::new(inner)),
+    guard: None,
+    alias: None,
+    code_block: None,
+  }),
+  Lookahead => Ok(crate::ast::Pattern {
+    variant: crate::ast::PatternType::Lookahead(Box::new(inner)),
+    guard: None,
+    alias: None,
+    code_block: None,
+  }),
+}
+---

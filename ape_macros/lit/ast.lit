@@ -112,14 +112,14 @@ use super::proc_macro::Ident;
 ---
 
 --- pattern fields+=
-alias: Option<Ident>,
+pub alias: Option<Ident>,
 ---
 
 Aliasing a sequence or repetition of matches will yield a `Vec` of the match values.
 
 @ss Building values from the pattern
 
-By default, Ape will make a successful parse return nothing. To instead return a value, we can end the pattern with a curly block `{}` containing Rust code. The code will have access to variables bound in the pattern. 
+By default, Ape will make a successful parse return nothing. To instead return a value, we can end the pattern with an arrow `=>` followed by a curly block `{}` containing Rust code. The code will have access to variables bound in the pattern. 
 
 --- pattern fields+=
 pub code_block: Option<TokenStream>,
@@ -127,21 +127,9 @@ pub code_block: Option<TokenStream>,
 
 @ss Pattern subrules
 
-Ape does not have an intrinsic notion of rules and rule use. Instead, an Ape pattern can be embedded inside another pattern using `:{}` - a brace block preceded by a colon. The contents of the brace block will be evaluated as Rust code, and the result will be used to do matching.
+Ape does not have an intrinsic notion of rules and rule use. Instead, an Ape pattern can be embedded inside another pattern using `{}` - a brace block. The contents of the brace block will be evaluated as Rust code, and the result will be used to do matching.
 
 --- ast variants+=
 Runtime(TokenStream),
 ---
-
-@ss Feature precedence
-
-The precedence, from lowest to highest, of the syntax features is defined as follows:
- * `/`
- * aliasing
- * code blocks
- * `~`
- * `if` guards
- * `*`, `+`, `**`, `++`, `?`
- * `->`
- * `!`
 

@@ -54,7 +54,7 @@ Finally, we define the high-level flow of the macro - first, an AST is build to 
 let ast = self::parsing::parse(tokens);
 match ast {
   Ok(tree) => self::code::generate(tree),
-  Err(ast::Error { .. }) => quote!(),
+  Err(parsing::Error { .. }) => quote!(),
 }
 ---
 

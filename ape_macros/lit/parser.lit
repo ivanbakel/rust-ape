@@ -27,8 +27,8 @@ pub(crate) struct Error {
 
 The error carries a message, and also sometimes a `Span` - a representation of where in the file the error occured. This representation comes from Rust's own token construction.
 --- error fields
-message: String,
-location: Span,
+pub message: String,
+pub location: Span,
 ---
 
 so that the function to build the AST returns a `Result` over the AST type

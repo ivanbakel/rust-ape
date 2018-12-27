@@ -39,6 +39,7 @@ Procedural macros require the `proc_macro` crate.
 #![feature(proc_macro_quote)]
 #![feature(proc_macro_span)]
 #![feature(proc_macro_hygiene)]
+#![feature(proc_macro_diagnostic)]
 extern crate proc_macro;
 ---
 
@@ -54,7 +55,10 @@ Finally, we define the high-level flow of the macro - first, an AST is build to 
 let ast = self::parsing::parse(tokens);
 match ast {
   Ok(tree) => self::code::generate(tree),
-  Err(parsing::Error { .. }) => quote!(),
+  Err(parsing::Error { message, location }) => {
+    location.error(message).emit();
+    quote!()
+  },
 }
 ---
 

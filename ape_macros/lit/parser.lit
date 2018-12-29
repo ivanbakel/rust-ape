@@ -955,9 +955,8 @@ Piece::Bracketed(pieces) => {
 If it is a binary operator, then it is definitely of a suitable precedence - we attempt to build its right-hand side by constructing a parse-tree with minimum precedence equal to that of the operator, and then attempt to apply the result to the stack.
 --- match the next piece+=
 Piece::Binary(operator) => {
-  let rhs = build_parse_tree_with_minimum_precedence(iterator, operator.get_precedence())?;
-
   if let Some(val) = stack {
+    let rhs = build_parse_tree_with_minimum_precedence(iterator, operator.get_precedence())?;
     stack = Some(val.apply_binary(operator, rhs)?);
   } else {
     break Err(Error {

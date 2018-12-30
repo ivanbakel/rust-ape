@@ -1,0 +1,27 @@
+@title Empty macro
+
+@code_type rust .rs
+
+A test of an empty macro invocation. With no pattern, this should be an error.
+
+--- empty_macro.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+fn main() {
+  arb_peg!{}
+}
+---
+
+--- empty_macro.stderr
+error: Unexpected end of input while trying to build the pattern.
+ --> $DIR/empty_macro.rs:7:3
+  |
+7 |   arb_peg!{}
+  |   ^^^^^^^^^^
+
+error: aborting due to previous error
+---
+

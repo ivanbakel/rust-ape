@@ -1,0 +1,27 @@
+@title Prefix operator with no target
+
+@code_type rust .rs
+
+A prefix operator, `!`, with no following expression. The expected error is that no pattern followed the operator.
+
+--- empty_prefix.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+fn main() {
+  arb_peg!{!}
+}
+---
+
+--- empty_prefix.stderr
+error: Unexpected end of input while trying to build the pattern.
+ --> $DIR/empty_prefix.rs:7:3
+  |
+7 |   arb_peg!{!}
+  |   ^^^^^^^^^^^
+
+error: aborting due to previous error
+---
+

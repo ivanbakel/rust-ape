@@ -1,0 +1,40 @@
+@title Compiler tests for the arb_peg macro
+
+@code_type rust .rs
+
+We use the `compiletest_rs` crates to run compiler tests on the macro, to ensure it works as expected.
+--- compile_test.rs
+extern crate compiletest_rs;
+---
+
+The crate can be used to try to compile a series of Rust files in a directory in a certain "mode" - modes can include compile successfully, compile with a given warning emitted, fail to compile with a given error message, etc. Tests are separated into directories by purpose, and all tests with the same purpose run with the same mode.
+--- compile_test.rs
+fn run_with_mode(directory: &str, mode: compiletest_rs::common::Mode) {
+  @{compile files with the given mode}
+}
+
+#[test]
+fn compile_tests() {
+  @{run some compiler tests}
+}
+---
+
+To compile the files in the directory, we have to create a config, and then run it. The config holds the mode and the directory information, as well as information about which files to link against, which is populated by a crate-provided helper function.
+--- compile files with the given mode    
+let mut config = compiletest_rs::Config::default();
+
+config.mode = mode;
+config.src_base = std::path::PathBuf::from(format!("tests/{}", directory));
+config.link_deps(); // Populate config.target_rustcflags with dependencies on the path
+config.clean_rmeta(); // If your tests import the parent crate, this helps with E0464
+
+compiletest_rs::run_tests(&config);
+---
+
+We can now load and run compiler tests. These are found in the relevant directories. The categories are
+ * macro uses which are syntactically incorrect, and should fail to compile
+The compiler team recommends that `Ui` be used over other modes, to avoid regressions by capturing all `stdout` and `stderr` output.
+--- run some compiler tests
+run_with_mode("bad_macro_syntax", compiletest_rs::common::Mode::Ui);
+---
+

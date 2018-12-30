@@ -11,3 +11,6 @@ proc-macro = true
 [dependencies]
 backtracking_iterator = "^0.4"
 
+[dev-dependencies]
+compiletest_rs = "^0.3"
+

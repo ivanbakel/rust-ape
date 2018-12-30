@@ -1,0 +1,27 @@
+@title Postfix operator with no target
+
+@code_type rust .rs
+
+A postfix operator, `*`, with no preceding expression. The expected error is that is there was no preceding expression.
+
+--- empty_postfix.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+fn main() {
+  arb_peg!{*}
+}
+---
+
+--- empty_postfix.stderr
+error: Encountered a use of `*` with no preceding pattern.
+ --> $DIR/empty_postfix.rs:7:12
+  |
+7 |   arb_peg!{*}
+  |            ^
+
+error: aborting due to previous error
+---
+

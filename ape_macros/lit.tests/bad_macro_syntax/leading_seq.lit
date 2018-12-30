@@ -1,0 +1,27 @@
+@title Leading sequence operator
+
+@code_type rust .rs
+
+A macro invocation starting with a `~`, a sequence operator. The expected error is that the operator has no preceding pattern to form a sequence with.
+
+--- leading_seq.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+fn main() {
+  arb_peg!{~}
+}
+---
+
+--- leading_seq.stderr
+error: Encountered a use of `~` with no left-hand side.
+ --> $DIR/leading_seq.rs:7:12
+  |
+7 |   arb_peg!{~}
+  |            ^
+
+error: aborting due to previous error
+---
+

@@ -1,0 +1,54 @@
+@title Writing two `if` guards for one pattern
+
+@code_type rust .rs
+
+The guard operator can only be used once per pattern - any more is considered more likely to be a user error than deliberate, and causes a message to be raised.
+--- double_guard.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+struct Foo {}
+
+fn main() {
+  arb_peg!{ Foo if true if false }
+}
+---
+
+--- double_guard.stderr
+error: Unexpected guard after a pattern which already has a guard.
+ --> $DIR/double_guard.rs:9:28
+  |
+9 |   arb_peg!{ Foo if true if false }
+  |                            ^^^^^
+
+error: aborting due to previous error
+
+---
+
+This ignores bracketing, as it should not be syntactically significant apart from for precedence purposes.
+--- double_guard_with_brackets.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+struct Foo {}
+
+fn main() {
+  arb_peg!{ (Foo if true) if false }
+}
+---
+
+--- double_guard_with_brackets.stderr
+error: Unexpected guard after a pattern which already has a guard.
+ --> $DIR/double_guard_with_brackets.rs:9:30
+  |
+9 |   arb_peg!{ (Foo if true) if false }
+  |                              ^^^^^
+
+error: aborting due to previous error
+
+---
+

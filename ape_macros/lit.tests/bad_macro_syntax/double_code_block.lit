@@ -1,0 +1,53 @@
+@title Using a code block operator twice
+
+@code_type rust .rs
+
+The code block operator can only be used once per pattern - any more is considered more likely to be a user error than deliberate, and causes a message to be raised.
+--- double_code_block.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+struct Foo {}
+
+fn main() {
+  arb_peg!{ Foo => {} => {} }
+}
+---
+
+--- double_code_block.stderr
+error: Unexpected code block after a pattern which already has a code block.
+ --> $DIR/double_code_block.rs:9:23
+  |
+9 |   arb_peg!{ Foo => {} => {} }
+  |                       ^^^^^
+
+error: aborting due to previous error
+
+---
+
+This ignores bracketing, as it should not be syntactically significant apart from for precedence purposes.
+--- double_code_block_with_brackets.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+struct Foo {}
+
+fn main() {
+  arb_peg!{ (Foo => {}) => {} }
+}
+---
+
+--- double_code_block_with_brackets.stderr
+error: Unexpected code block after a pattern which already has a code block.
+ --> $DIR/double_code_block_with_brackets.rs:9:25
+  |
+9 |   arb_peg!{ (Foo => {}) => {} }
+  |                         ^^^^^
+
+error: aborting due to previous error
+
+---

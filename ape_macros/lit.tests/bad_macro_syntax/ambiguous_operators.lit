@@ -1,0 +1,21 @@
+@title Ambiguous operator combination
+
+@code_type rust .rs
+
+The operators `**`, `++`, `*`, and `+` all have the same precedence - it is not clear how they would be expected to be combined by the user, and to avoid unexpected behaviour, they have to be disambiguated via bracketing when used together.
+--- ambiguous_operators.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+struct Foo {}
+struct Bar {}
+
+fn main() {
+  arb_peg!{ Foo ** Bar+ }
+}
+---
+
+The expected error mentions the two operators used and the ambiguity between them.
+

@@ -23,5 +23,6 @@ error: Encountered a use of `*` with no preceding pattern.
   |            ^
 
 error: aborting due to previous error
+
 ---
 

@@ -23,5 +23,6 @@ error: Unexpected end of input while trying to build the pattern.
   |   ^^^^^^^^^^^
 
 error: aborting due to previous error
+
 ---
 

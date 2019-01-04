@@ -81,14 +81,12 @@ Repetition {
 },
 ---
 
-To represent all repetition numbers, the parameters include the lower and upper bounds 
+To represent all repetition numbers, the parameters include the lower and upper bounds. These are required, but can be set to be essentially meaningless by giving `0` and `usize::max` respectively - however, because `usize` values cannot be converted back into tokens, we store the bounds as raw `TokenStream`s. 
 
 --- repetition parameters+=
-at_least: Option<usize>,
-at_most: Option<usize>,
+at_least: TokenStream,
+at_most: TokenStream,
 --- 
-
-Repetition based on runtime values can be done directly in code, so is not included here.
 
 Ape also borrows from `rust-peg` the handy extension that `pattern ** delimiter` and `pattern ++ delimiter` represent zero-or-more and one-or-more matches of a pattern, separated by the delimiter pattern, respectively. These are also repetitions, and they require an additional parameter
 

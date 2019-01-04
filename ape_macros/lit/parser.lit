@@ -1057,8 +1057,8 @@ match operator.kind {
   ZeroOrMoreWithDelim => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Repetition {
       pattern: Box::new(build_ast_from_parsetree(*left)?),
-      at_least: None,
-      at_most: None,
+      at_least: quote!(0),
+      at_most: quote!(std::usize::MAX),
       delimiter: Some(Box::new(build_ast_from_parsetree(*right)?)),
     },
     guard: None,
@@ -1068,8 +1068,8 @@ match operator.kind {
   OneOrMoreWithDelim => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Repetition {
       pattern: Box::new(build_ast_from_parsetree(*left)?),
-      at_least: Some(1),
-      at_most: None,
+      at_least: quote!(1),
+      at_most: quote!(std::usize::MAX),
       delimiter: Some(Box::new(build_ast_from_parsetree(*right)?)),
     },
     guard: None,
@@ -1174,8 +1174,8 @@ match operator.kind {
   ZeroOrMore => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Repetition {
       pattern: Box::new(inner),
-      at_least: None,
-      at_most: None,
+      at_least: quote!(0),
+      at_most: quote!(std::usize::MAX),
       delimiter: None,
     },
     guard: None,
@@ -1185,8 +1185,8 @@ match operator.kind {
   OneOrMore => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Repetition {
       pattern: Box::new(inner),
-      at_least: Some(1),
-      at_most: None,
+      at_least: quote!(1),
+      at_most: quote!(std::usize::MAX),
       delimiter: None,
     },
     guard: None,

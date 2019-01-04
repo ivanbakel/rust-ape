@@ -38,14 +38,14 @@ The body has to actually run the code after the pattern matches, if it is define
 --- generate code for body +=
 let return_value = if let Some(code) = pattern.code_block {
   quote! {
-    #given_body
+    $given_body
     Ok({
-      #code
+      $code
     })
   }
 } else {
   quote! {
-    #given_body 
+    $given_body 
     Ok(()) 
   }
 };
@@ -64,10 +64,10 @@ if let Some(guard) = pattern.guard {
 
 The guard is just a conditional on some variables which are in scope, so we can represent it as an if. Additionally, to help the user find what condition is failing, we can use the direct printing of the `TokenStream` in the error message. Finally, we embed the code in the centre
 --- generate the guarded code
-if #guard {
-  #return_value
+if $guard {
+  $return_value
 } else {
-  mismatch!("Expected the value to pass `#guard`")
+  mismatch!("Expected the value to pass `$guard`")
 }
 ---
 
@@ -112,12 +112,12 @@ For a raw pattern, we can test a match and bind any variables with a simple `if 
 --- raw rust pattern
 quote! {
   let next = feed.expect()?;
-  if let #rust_pattern = next {
+  if let $rust_pattern = next {
     Ok({
-      #body
+      $body
     })
   } else {
-    mismatch!("Expected value to match `#rust_pattern`")
+    mismatch!("Expected value to match `$rust_pattern`")
   }
 }
 ---
@@ -126,10 +126,10 @@ For a runtime pattern, we can test a match by simply calling the method on the `
 --- runtime pattern
 quote! {
   let pattern = {
-    #runtime
+    $runtime
   };
   pattern.pmatch(feed)?;
-  #body
+  $body
 }
 ---
 
@@ -138,11 +138,11 @@ The negation of a given pattern can be tested by simply swapping the success and
 let inner_pattern = generate_pattern_with_body(*pattern, quote!{});
 quote! {
   if let Ok(success) = {
-    #inner_pattern
+    $inner_pattern
   } {
     mismatch!("Expected the pattern to fail")
   } else {
-    #body
+    $body
   }
 }
 ---
@@ -152,10 +152,10 @@ To make a pattern optional, we can simply discard the error state - but the retu
 let inner_pattern = generate_pattern_with_body(*pattern, quote!{});
 quote! {
   if let Ok(_) = {
-    #inner_pattern
+    $inner_pattern
   } {
     Ok(Some({
-      #body
+      $body
     }?))
   } else {
     Ok(None)
@@ -170,8 +170,8 @@ if let Some(delimiter) = delimiter {
   let delimiter = generate_pattern_with_body(*delimiter, quote!{});
   quote! {
     let mut matched = false;
-    for i in 0 .. #at_most {
-      if i >= #at_least {
+    for i in 0 .. $at_most {
+      if i >= $at_least {
         @{delimiter before the minimum matches}
         @{after the minimum matches}
       } else {
@@ -179,18 +179,18 @@ if let Some(delimiter) = delimiter {
         @{before the minimum matches}
       }
     }
-    #body
+    $body
   }
 } else {
   quote! {
-    for i in 0 .. #at_most {
-      if i >= #at_least {
+    for i in 0 .. $at_most {
+      if i >= $at_least {
         @{after the minimum matches}
       } else {
         @{before the minimum matches}
       }
     }
-    #body
+    $body
   }
 }
 ---
@@ -199,14 +199,14 @@ The logic before we've hit the minimum number of matches is simple: if there has
 --- delimiter before the minimum matches+=
 if matched {
   {
-    #delimiter
+    $delimiter
   }?;
 }
 ---
 then match the pattern.
 --- before the minimum matches+=
 {
-  #pattern
+  $pattern
 }?;
 matched = true;
 ---
@@ -215,7 +215,7 @@ Once we've hit the minimum number of matches, the logic is more complicated: if 
 --- delimiter after the minimum matches+=
 if matched {
   if !{
-    #delimiter
+    $delimiter
   }.is_ok() {
     break;
   }
@@ -224,7 +224,7 @@ if matched {
 then we match the pattern - again, if we fail to match, we simply fail out of the loop
 --- after the minimum matches+=
 if let Ok(_) = {
-  #pattern
+  $pattern
 } {
   matched = true;
 } else {
@@ -257,16 +257,16 @@ let mut alternatives = patterns.into_iter().map(|pattern| {
 });
 let first = alternatives.next().expect("At least one pattern in the alternative set");
 
-alternatives.fold(first, |alternatives, next| {
+let alternation = alternatives.fold(first, |alternatives, next| {
   quote! {
-    #alternatives
-      .or(#next)
+    $alternatives
+      .or($next)
   }
 });
 
 quote! {
-  #alternatives.map(|_| {
-    #body
+  $alternation.map(|_| {
+    $body
   })
 }
 ---
@@ -277,7 +277,7 @@ Finally, we have to return a value which implements the `Pattern` trait, to allo
 --- build the pattern object
 quote! {
   |feed| {
-    #matching
+    $matching
   }
 }
 ---

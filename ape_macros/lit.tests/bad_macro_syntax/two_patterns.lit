@@ -1,0 +1,31 @@
+@title Two patterns with no separation
+
+@code_type rust .rs
+
+A pattern should never be immediately followed by another pattern - though we could interpret this as sequencing, we don't. Brackets are used so the parser does not take the result to be the single pattern `Foo Foo`, as the logic is very primitive.
+--- two_patterns.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+struct Foo {}
+
+fn main() {
+  arb_peg!{ (Foo ~ Foo) (Foo ~ Foo) }
+}
+---
+
+The expected error is that the second pattern is not expected after the first.
+
+--- two_patterns.stderr
+error: Encountered an unexpected `(Foo~Foo)`
+ --> $DIR/two_patterns.rs:9:26
+  |
+9 |   arb_peg!{ (Foo ~ Foo) (Foo ~ Foo) }
+  |                          ^^^^^^^^^
+
+error: aborting due to previous error
+
+---
+

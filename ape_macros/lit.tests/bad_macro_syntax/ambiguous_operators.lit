@@ -19,3 +19,14 @@ fn main() {
 
 The expected error mentions the two operators used and the ambiguity between them.
 
+--- ambiguous_operators.stderr
+error: Can't combine `+` and `**` without bracketing - their use is ambiguous
+  --> $DIR/ambiguous_operators.rs:10:17
+   |
+10 |   arb_peg!{ Foo ** Bar+ }
+   |                 ^^^^^^^
+
+error: aborting due to previous error
+
+---
+

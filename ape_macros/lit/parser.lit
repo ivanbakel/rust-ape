@@ -375,8 +375,8 @@ Some operators prefix others, so it matters if they are followed immediately by 
   if let Spacing::Alone = op_start.spacing() {
     Some(Piece::Unary(UnOp { kind: UnOpKind::ZeroOrMore, location: op_start.span() }))
   } else {
-    match token_iter.next()? {
-      TokenTree::Punct(ref second_part) if second_part.as_char() == '*' 
+    match token_iter.next() {
+      Some(TokenTree::Punct(ref second_part)) if second_part.as_char() == '*' 
         => Some(Piece::Binary(BinOp { 
           kind: BinOpKind::ZeroOrMoreWithDelim, 
           location: op_start.span().join(second_part.span()).unwrap() 
@@ -389,8 +389,8 @@ Some operators prefix others, so it matters if they are followed immediately by 
   if let Spacing::Alone = op_start.spacing() {
     Some(Piece::Unary(UnOp { kind: UnOpKind::OneOrMore, location: op_start.span() }))
   } else {
-    match token_iter.next()? {
-      TokenTree::Punct(ref second_part) if second_part.as_char() == '+' 
+    match token_iter.next() {
+      Some(TokenTree::Punct(ref second_part)) if second_part.as_char() == '+' 
         => Some(Piece::Binary(BinOp {
           kind: BinOpKind::OneOrMoreWithDelim,
           location: op_start.span().join(second_part.span()).unwrap(),
@@ -574,9 +574,9 @@ impl ParseTree {
   @{appending to the parse-tree}
 }
 --- 
-Methods for this logic may return a new tree at the top level, so the existing tree is passed in by ownership, and the new tree (which may be the same struct as the original) is returned. 
+Methods for this logic may return a new tree at the top level, so the existing tree is passed in by ownership, and the new tree (which may be the same struct as the original) is returned. This action may fail, if we are asked to combine operators with ambiguous precedence.
 --- appending to the parse-tree+=
-fn apply_unary(self, operator: UnOp) -> Self {
+fn apply_unary(self, operator: UnOp) -> Result<Self> {
   use self::ParseTree::*;
 
   match self {
@@ -596,18 +596,23 @@ Unary {
 } => {
   if application_operator.get_precedence() > operator.get_precedence() ||
       application_operator.get_fixity() == operator.get_fixity() {
-    Unary {
+    Ok(Unary {
       operator,
       on: Box::new(Unary {
         operator: application_operator,
         on: on,
       }),
-    }
-  } else {
-    Unary {
+    })
+  } else if application_operator.get_precedence() == operator.get_precedence() {
+    Ok(Unary {
       operator: application_operator,
-      on: Box::new(on.apply_unary(operator)),
-    }
+      on: Box::new(on.apply_unary(operator)?),
+    })
+  } else {
+    Err(Error {
+      message: format!("Can't combine `{}` and `{}` without bracketing - their use is ambiguous", application_operator, operator),
+      location: application_operator.span().join(operator.span()).unwrap(),
+    })
   }
 },
 ---
@@ -622,49 +627,77 @@ Binary {
   right,
 } => {
   if application_operator.get_precedence() > operator.get_precedence() {
-    Unary {
+    Ok(Unary {
       operator,
       on: Box::new(Binary {
         operator: application_operator,
         left,
         right,
       }),
-    }
-  } else {
+    })
+  } else if application_operator.get_precedence() < operator.get_precedence() {
     if operator.get_fixity() == Fixity::Prefix {
-      Binary {
+      Ok(Binary {
         operator: application_operator,
-        left: Box::new(left.apply_unary(operator)),
+        left: Box::new(left.apply_unary(operator)?),
         right,
-      }
+      })
     } else {
-      Binary {
+      Ok(Binary {
         operator: application_operator,
         left,
-        right: Box::new(right.apply_unary(operator)),
-      }
+        right: Box::new(right.apply_unary(operator)?),
+      })
     }
+  } else {
+    Err(Error {
+      message: format!("Can't combine `{}` and `{}` without bracketing - their use is ambiguous", application_operator, operator),
+      location: application_operator.span().join(operator.span()).unwrap(),
+    })
   }
 },
 ---
 
 For bracketed, raw, or runtime-embedded parse-tree leaves, we always wrap
 --- appending a unary operator+=
-non_recursive => Unary {
+non_recursive => Ok(Unary {
   operator,
   on: Box::new(non_recursive),
-},
+}),
 ---
 
 Appending to the tree may fail e.g. when a binary operator with no associativity is used twice, so the binary method will return a `Result`.
 --- appending to the parse-tree +=
 fn apply_binary(self, operator: BinOp, right: ParseTree) -> Result<Self> {
   use self::ParseTree::*;
-  use self::Associativity::*;
+
+  @{checking the operator can be used unambiguously}
 
   match self {
     @{appending a binary operator}
   }
+}
+---
+
+We can only build the combination safely if the binary operator can be combined with the given `right` ParseTree. 
+ * if the right is a unary application then
+   * if it is prefix, `A * ^B` is unambiguouosly `A * (^B)`
+   * otherwise, the precedences must be unequal
+ * if the right is a binary application, we handle the ambiguity later
+ * if the right is anything else, the application is unambiguous
+--- checking the operator can be used unambiguously
+match right {
+  Unary {
+    operator: ref application_operator,
+    ..
+  } if application_operator.get_precedence() <= operator.get_precedence() &&
+       application_operator.get_fixity() == Fixity::Postfix => {
+    return Err(Error {
+      message: format!("Can't combine `{}` and `{}` without bracketing - their use is ambiguous", application_operator, operator),
+      location: application_operator.span().join(operator.span()).unwrap(),
+    });
+  }
+  _ => {},
 }
 ---
 
@@ -687,10 +720,15 @@ Unary {
       }),
       right: Box::new(right),
     })
-  } else {
+  } else if application_operator.get_precedence() < operator.get_precedence()  {
     Ok(Unary {
       operator: application_operator,
       on: Box::new(on.apply_binary(operator, right)?),
+    })
+  } else {
+    Err(Error {
+      message: format!("Can't combine `{}` and `{}` without bracketing - their use is ambiguous", application_operator, operator),
+      location: application_operator.span().join(operator.span()).unwrap(),
     })
   }
 },
@@ -979,7 +1017,7 @@ Piece::Unary(operator) => {
 --- match a unary operator based on fixity+=
 Fixity::Postfix => {
   if let Some(val) = stack {
-    stack = Some(val.apply_unary(operator));
+    stack = Some(val.apply_unary(operator)?);
   } else {
     break Err(Error {
       message: format!("Encountered a use of `{}` with no preceding pattern.", operator),
@@ -1000,7 +1038,7 @@ Fixity::Prefix => {
     })
   } else {
     let applied_to = build_parse_tree_with_minimum_precedence(iterator, Precedence::max(minimum_precedence, operator.get_precedence()))?;
-    stack = Some(applied_to.apply_unary(operator));
+    stack = Some(applied_to.apply_unary(operator)?);
   }
 }
 ---

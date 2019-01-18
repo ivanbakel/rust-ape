@@ -39,6 +39,57 @@ pub(crate) fn parse(tokens: TokenStream) -> Result<crate::ast::Pattern> {
 }
 ---
 
+@s Syn integration
+
+At several points, we want to interpret tokens as Rust code, using `syn`'s `parse()` function - but this expects the provided `TokenStream` to be the whole of the thing to parse, whereas we would like to only partially consume the stream. This is the helper for that behaviour. It works by finding the largest prefix of tokens which can be parsed as the desired Rust AST node, by
+ * building the collection of all the tokens, then
+   * trying to parse the collection - if it succeeds, eat the tokens and return the success
+   * otherwise, remove a token from the collection and try again
+ * if there are no tokens left in the collection, re-add them until a non-pattern element is reached, or the input is finished - this is the most meaningful error message possible
+--- parsing contents+=
+fn try_syn_parse<P: syn::parse::Parse>(token_iter: &mut token_stream::IntoIter) -> Result<P> {
+  let mut tokens = token_iter.clone().collect::<Vec<_>>();
+
+  while tokens.len() != 0 {
+    let stream = TokenStream::from_iter(tokens.clone().into_iter());
+    if let Ok(node) = syn::parse::<P>(stream) {
+      for _token in tokens.iter() {
+        token_iter.next();
+      }
+      return Ok(node);
+    } else {
+      tokens.pop();
+    }
+  }
+
+  let mut last_error : Option<Result<_>> = None;
+  while let Some(token) = token_iter.next() {
+    tokens.push(token);
+    
+    let current_error = syn::parse::<P>(TokenStream::from_iter(tokens.clone().into_iter()))
+      .map_err(|error| Error { 
+        location: error.span().unstable(),
+        message: error.to_string(),
+      });
+    if let Some(_parse_result) = try_parse_tokens_as_non_raw_pattern(&mut token_iter.clone()) {
+      return current_error;
+    } 
+    last_error = Some(current_error); 
+  } 
+  last_error.unwrap_or(Err(Error {
+    location: Span::call_site(),
+    message: format!("Unexpected end of input while trying to parse a pattern."),
+  }))
+}
+---
+We make use of this helper function again later - it is explained in the main parsing logic.
+--- parsing contents+=
+fn try_parse_tokens_as_non_raw_pattern(token_iter: &mut token_stream::IntoIter) -> Option<Result<Piece>> {
+  @{try to parse tokens into a non-raw pattern}
+}
+---
+
+
 @s Parsing stages
 
 The parsing is broken into three stages
@@ -209,12 +260,13 @@ impl Piece {
 ---
 
 Since the parsing logic is recursive for brackets, we define the logic in a recursive helper function, and invoke it on the given token-stream
---- tokens into pieces
-fn parse_tokens_into_pieces(tokens: TokenStream) -> Vec<Piece> {
+--- parsing contents+=
+fn parse_tokens_into_pieces(tokens: TokenStream) -> Result<Vec<Piece>> {
    @{parse the tokens into pieces}
 }
-
-parse_tokens_into_pieces(tokens)
+---
+--- tokens into pieces
+parse_tokens_into_pieces(tokens)?
 ---
 
 Pieces are built one at a time from iterating over the `TokenStream` - each group of tokens produces one `Piece`, so we can build the collection of `Piece`s iteratively.
@@ -228,53 +280,62 @@ while let Some(piece) = {
 } {
   pieces.push(piece);
 }
-pieces
+Ok(pieces)
 ---
 
-`Piece`s which are non-raw patterns are very simple to detect and construct. The raw pattern is only constructed as a fallback value.
-To parse a group of tokens as a `Piece`, we can then follow a simple algorithm
- * initialise a collection of tokens to store a raw pattern 
- * if we can parse the next group of tokens as a non-raw pattern, then
-   * if the raw pattern collection is empty, return the non-raw pattern as a `Piece`
-   * otherwise, return the raw pattern collection as a `Piece`
- * otherwise, put the current token in the raw pattern collection
+In order to parse Rust patterns, we rely on the very handy `syn` crate with several extra features enabled
+ * `full`, for pattern support
+ * `parsing`, for, unsurprisingly, parsing
+ * `proc-macro`, for interop with the `proc_macro` types we use - such as `TokenStream`
+--- parsing imports+=
+use syn;
+---
 
 Converting an iterator of Rust tokens back into a `TokenStream` requires a trait
 --- parsing imports+=
 use std::iter::FromIterator;
 ---
+Converting a `syn` AST node back to tokens also requires a crate
+--- parsing imports+=
+use syn::export::ToTokens;
+---
 
-If at any point we run out of tokens, then
- * if the raw pattern collection is non-empty, return the raw pattern collection
- * otherwise return nothing
-
+Our algorithnm is
+ * try to parse the next set of tokens as a Rust pattern
+   * if this is a success, return that as the piece
+ * otherwise, hang on to the error message, then
+ * try to parse the next set of tokens as a non-Rust `Piece`
+   * if this is a success, return that as the piece
+ * otherwise
+   * if there was an unambiguous error as a non-Rust piece, return that error
+   * if there are still tokens, stop trying to parse, with the Rust pattern error
+   * if there are no more tokens, stop parsing successfully
 --- turn the next set of tokens into a piece
-fn try_parse_tokens_as_non_raw_pattern(token_iter: &mut token_stream::IntoIter) -> Option<Piece> {
-  @{try to parse tokens into a non-raw pattern}
-}
-
-let mut raw_pattern = vec![];
-
-loop {
-  let mut current_iter = token_iter.clone();
-  if let Some(piece) = try_parse_tokens_as_non_raw_pattern(&mut current_iter) {
-    break if raw_pattern.is_empty() {
-      token_iter = current_iter;
-      Some(piece)
-    } else {
-      Some(Piece::Raw(TokenStream::from_iter(raw_pattern.into_iter())))
-    };
-  }
-
-  if let Some(token) = token_iter.next() {
-    raw_pattern.push(token)
-  } else {
-    break if raw_pattern.is_empty() {
-      None
-    } else {
-      Some(Piece::Raw(TokenStream::from_iter(raw_pattern.into_iter())))
-    };
-  }
+let mut pattern_iter = token_iter.clone();
+match try_syn_parse::<syn::Pat>(&mut pattern_iter) {
+  Ok(pattern) => {
+    token_iter = pattern_iter;
+    Some(Piece::Raw(pattern.into_token_stream().into()))
+  },
+  Err(error) => {
+    let mut current_iter = token_iter.clone();
+    match try_parse_tokens_as_non_raw_pattern(&mut current_iter) {
+      Some(Ok(piece)) => {
+        token_iter = current_iter;
+        Some(piece)
+      },
+      Some(Err(unambiguous_error)) => {
+        return Err(unambiguous_error);
+      },
+      None => {
+        if let Some(_) = token_iter.next() {
+          return Err(error);
+        } else {
+          None
+        }
+      },
+    }
+  },
 }
 ---
 
@@ -293,10 +354,10 @@ TokenTree::Ident(identifier) => {
   if let TokenTree::Punct(punctuation) = token_iter.next()? {
     if punctuation.as_char() == '@' {
       let span = identifier.span().join(punctuation.span()).unwrap();
-      Some(Piece::Unary(UnOp { 
+      Some(Ok(Piece::Unary(UnOp { 
         kind: UnOpKind::Alias(identifier), 
         location: span,  
-      }))
+      })))
     } else {
       None
     }
@@ -313,17 +374,16 @@ TokenTree::Punct(op_start) => {
   }
 },
 ---
-A group is possibly significant in 2 ways - if it is a curly-braced block, it is a runtime pattern, and if it is a round-braced block containing more than just a raw pattern, it is a bracketed group of patterns.
+A group is possibly significant in 2 ways - if it is a curly-braced block, it is a runtime pattern, and if it is a round-braced block, it is a bracketed group of patterns.
 --- try to parse the next token into a non-raw pattern+=
 TokenTree::Group(ref group) if group.delimiter() == Delimiter::Brace => {
-  Some(Piece::Runtime(group.stream()))
+  Some(Ok(Piece::Runtime(group.stream())))
 },
 TokenTree::Group(ref group) if group.delimiter() == Delimiter::Parenthesis => {
-  let bracketed_pieces = parse_tokens_into_pieces(group.stream());
-  if let [Piece::Raw(_)] = bracketed_pieces[..] {
-    None
+  if let Ok(pieces) = parse_tokens_into_pieces(group.stream()) {
+    Some(Ok(Piece::Bracketed(pieces)))
   } else {
-    Some(Piece::Bracketed(bracketed_pieces))
+    None
   }
 },
 ---
@@ -334,29 +394,20 @@ _ => None,
 
 @ss Building a guard
 
-A guard is built in a similar way to a raw pattern, but much simpler - every token which cannot be parsed as a non-raw pattern is put into the guard.
+A guard is just a Rust expression, and can be parsed using `syn`.
 --- match tokens for a guard
-let mut guard = vec![];
+let guard_tokens : TokenStream = match try_syn_parse::<syn::Expr>(token_iter) {
+  Ok(expr) => expr.into_token_stream().into(),
+  Err(error) => {
+    return Some(Err(error));
+  },
+};
 
-loop {
-  let mut current_iter = token_iter.clone();
-  if let Some(_) = try_parse_tokens_as_non_raw_pattern(&mut current_iter) {
-    break;
-  } else {
-    if let Some(token) = token_iter.next() {
-      guard.push(token);
-    } else {
-      break;
-    }
-  }
-}
-
-let guard_tokens = TokenStream::from_iter(guard.into_iter());
 let span = join_spans(guard_tokens.clone().into_iter().map(|token| token.span()));
-Some(Piece::Unary(UnOp {
+Some(Ok(Piece::Unary(UnOp {
   kind: UnOpKind::Guard(guard_tokens),
   location: span,
-}))
+})))
 ---
 
 
@@ -364,38 +415,38 @@ Some(Piece::Unary(UnOp {
 
 Some operators are immediately detectable - `?` and `!`, for example, are single characters and don't prefix any other operator. 
 --- try to parse the punctuation as an operator+=
-'?' => Some(Piece::Unary(UnOp { kind: UnOpKind::Optional, location: op_start.span() })),
-'!' => Some(Piece::Unary(UnOp { kind: UnOpKind::Negation, location: op_start.span() })),
-'|' => Some(Piece::Binary(BinOp { kind: BinOpKind::Alternation, location: op_start.span() })),
-'~' => Some(Piece::Binary(BinOp { kind: BinOpKind::Sequence, location: op_start.span() })),
+'?' => Some(Ok(Piece::Unary(UnOp { kind: UnOpKind::Optional, location: op_start.span() }))),
+'!' => Some(Ok(Piece::Unary(UnOp { kind: UnOpKind::Negation, location: op_start.span() }))),
+'|' => Some(Ok(Piece::Binary(BinOp { kind: BinOpKind::Alternation, location: op_start.span() }))),
+'~' => Some(Ok(Piece::Binary(BinOp { kind: BinOpKind::Sequence, location: op_start.span() }))),
 ---
 Some operators prefix others, so it matters if they are followed immediately by more punctuation or not. `* *` is `*` twice, but `**` is the delimited version.
 --- try to parse the punctuation as an operator+=
 '*' => {
   if let Spacing::Alone = op_start.spacing() {
-    Some(Piece::Unary(UnOp { kind: UnOpKind::ZeroOrMore, location: op_start.span() }))
+    Some(Ok(Piece::Unary(UnOp { kind: UnOpKind::ZeroOrMore, location: op_start.span() })))
   } else {
     match token_iter.next() {
       Some(TokenTree::Punct(ref second_part)) if second_part.as_char() == '*' 
-        => Some(Piece::Binary(BinOp { 
+        => Some(Ok(Piece::Binary(BinOp { 
           kind: BinOpKind::ZeroOrMoreWithDelim, 
           location: op_start.span().join(second_part.span()).unwrap() 
-        })),
-      _ => Some(Piece::Unary(UnOp { kind: UnOpKind::ZeroOrMore, location: op_start.span() })),
+        }))),
+      _ => Some(Ok(Piece::Unary(UnOp { kind: UnOpKind::ZeroOrMore, location: op_start.span() }))),
     }
   }
 },
 '+' => {
   if let Spacing::Alone = op_start.spacing() {
-    Some(Piece::Unary(UnOp { kind: UnOpKind::OneOrMore, location: op_start.span() }))
+    Some(Ok(Piece::Unary(UnOp { kind: UnOpKind::OneOrMore, location: op_start.span() })))
   } else {
     match token_iter.next() {
       Some(TokenTree::Punct(ref second_part)) if second_part.as_char() == '+' 
-        => Some(Piece::Binary(BinOp {
+        => Some(Ok(Piece::Binary(BinOp {
           kind: BinOpKind::OneOrMoreWithDelim,
           location: op_start.span().join(second_part.span()).unwrap(),
-        })),
-      _ => Some(Piece::Unary(UnOp { kind: UnOpKind::OneOrMore, location: op_start.span() })),
+        }))),
+      _ => Some(Ok(Piece::Unary(UnOp { kind: UnOpKind::OneOrMore, location: op_start.span() }))),
     }
   }
 },
@@ -406,10 +457,10 @@ Finally, some operators are multi-character
   let next_part = token_iter.next()?;
   if let TokenTree::Punct(next_punct) = next_part {
     if next_punct.as_char() == '>' && op_start.spacing() == Spacing::Joint {
-      Some(Piece::Unary(UnOp { 
+      Some(Ok(Piece::Unary(UnOp { 
         kind: UnOpKind::Lookahead, 
         location: op_start.span().join(next_punct.span()).unwrap(),
-      }))
+      })))
     } else {
       None
     }
@@ -424,10 +475,10 @@ Finally, some operators are multi-character
       let expected_codeblock = token_iter.next()?;
       if let TokenTree::Group(group) = expected_codeblock {
         if group.delimiter() == Delimiter::Brace {
-          Some(Piece::Unary(UnOp { 
+          Some(Ok(Piece::Unary(UnOp { 
             kind: UnOpKind::CodeBlock(group.stream()),
             location: op_start.span().join(next_punct.span()).unwrap().join(group.span()).unwrap(),
-          }))
+          })))
         } else {
           None
         }

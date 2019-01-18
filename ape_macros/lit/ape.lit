@@ -31,7 +31,6 @@ pub fn arb_peg(tokens: TokenStream) -> TokenStream {
 }
 ---
 
-
 Procedural macros require the `proc_macro` crate. We also enable some optional features, namely the ability to quasi-quote Rust code (useful for a macro), the ability to use `Span`s for error message purposes, the ability to use macros as items, and the ability to create error messages.
 --- crates+=
 #![feature(proc_macro_quote)]
@@ -66,5 +65,12 @@ These steps are defined in the appropriate modules:
 mod ast;
 mod parsing;
 mod code;
+---
+
+@s Syn
+
+Syn is used to do some parsing of Rust syntax. Its features are explained more in the `parsing` module.
+--- crates+=
+extern crate syn;
 ---
 

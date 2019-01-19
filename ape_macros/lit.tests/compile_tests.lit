@@ -33,8 +33,10 @@ compiletest_rs::run_tests(&config);
 
 We can now load and run compiler tests. These are found in the relevant directories. The categories are
  * macro uses which are syntactically incorrect, and should fail to compile
+ * macro uses which are correct, and should run as expected
 The compiler team recommends that `Ui` be used over other modes, to avoid regressions by capturing all `stdout` and `stderr` output.
 --- run some compiler tests
 run_with_mode("bad_macro_syntax", compiletest_rs::common::Mode::Ui);
+run_with_mode("run_pass", compiletest_rs::common::Mode::Ui);
 ---
 

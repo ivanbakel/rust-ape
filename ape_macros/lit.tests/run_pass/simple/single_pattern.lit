@@ -1,0 +1,22 @@
+@title A single pattern
+
+@code_type rust .rs
+
+--- single_pattern.rs
+// run-pass
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+#[macro_use]
+extern crate ape_runtime;
+
+use ape::arb_peg;
+
+fn main() {
+  let pattern = arb_peg!{true};
+
+  let sequence = vec![true, false, true].into_iter();
+
+  assert!(pattern.pmatch(sequence).is_ok());
+}
+---

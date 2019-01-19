@@ -15,4 +15,5 @@ syn = { version = "^0.15.26", features = ["full", "parsing", "proc-macro"] }
 [dev-dependencies]
 compiletest_rs = "^0.3"
 proc-macro2 = "^0.4.25"
+ape_runtime = { version = "^0.1", path = "../ape_runtime" }
 

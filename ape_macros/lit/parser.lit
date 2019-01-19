@@ -301,33 +301,32 @@ use syn::export::ToTokens;
 ---
 
 Our algorithnm is
- * try to parse the next set of tokens as a Rust pattern
-   * if this is a success, return that as the piece
- * otherwise, hang on to the error message, then
  * try to parse the next set of tokens as a non-Rust `Piece`
    * if this is a success, return that as the piece
- * otherwise
    * if there was an unambiguous error as a non-Rust piece, return that error
+ * try to parse the next set of tokens as a Rust pattern
+   * if this is a success, return that as the piece
+ * otherwise
    * if there are still tokens, stop trying to parse, with the Rust pattern error
    * if there are no more tokens, stop parsing successfully
 --- turn the next set of tokens into a piece
-let mut pattern_iter = token_iter.clone();
-match try_syn_parse::<syn::Pat>(&mut pattern_iter) {
-  Ok(pattern) => {
-    token_iter = pattern_iter;
-    Some(Piece::Raw(pattern.into_token_stream().into()))
+let mut non_raw_iter = token_iter.clone();
+match try_parse_tokens_as_non_raw_pattern(&mut non_raw_iter) {
+  Some(Ok(piece)) => {
+    token_iter = non_raw_iter;
+    Some(piece)
   },
-  Err(error) => {
-    let mut current_iter = token_iter.clone();
-    match try_parse_tokens_as_non_raw_pattern(&mut current_iter) {
-      Some(Ok(piece)) => {
-        token_iter = current_iter;
-        Some(piece)
+  Some(Err(unambiguous_error)) => {
+    return Err(unambiguous_error);
+  },
+  None => {
+    let mut pattern_iter = token_iter.clone();
+    match try_syn_parse::<syn::Pat>(&mut pattern_iter) {
+      Ok(pattern) => {
+        token_iter = pattern_iter;
+        Some(Piece::Raw(pattern.into_token_stream().into()))
       },
-      Some(Err(unambiguous_error)) => {
-        return Err(unambiguous_error);
-      },
-      None => {
+      Err(error) => {
         if let Some(_) = token_iter.next() {
           return Err(error);
         } else {

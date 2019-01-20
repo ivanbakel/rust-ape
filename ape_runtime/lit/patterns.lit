@@ -40,23 +40,6 @@ This may be a little opaque, so we can describe it with an example.
 
 @s Example impls
 
-@ss Functions as patterns
-
-Since the `Pattern` trait is what some other languages would call a "functional interface", there's a natural implementation for just a function with `pmatch`'s signature
-
---- some handy pattern impls+=
-impl<Input: Clone, Func, Output> Pattern<Input> for &Func where 
-  Func: Fn(&mut ParseFeed<Item=Input>) -> Result<Output> {
-  type Output = Output;
-
-  fn pmatch<P> (self, parse_feed: &mut P) -> Result<Output>
-    where P: ParseFeed<Item=Input> {
-    // Just call the function
-    self(parse_feed)
-  }
-}
----
-
 @ss Using Eq instances as patterns
 
 There's a natural way to use an equatable value as a pattern - match on equality. If the next value is equal to the thing we're using as a pattern, then we match successfully - otherwise, we return an error. Note that we have to wrap in a concrete type to avoid conflicting with the previous `impl`
@@ -65,8 +48,7 @@ There's a natural way to use an equatable value as a pattern - match on equality
 pub struct Equatable<E>(E);
 ---
 
-To autogenerate the mismatch error, we use the `Debug` trait, similarly to `unwrap()`
-
+To autogenerate the mismatch error, we use the `Debug` trait, similarly to `unwrap()`, and the macro defined in the crate
 --- imports+=
 use std::fmt;
 ---
@@ -84,7 +66,7 @@ fn pmatch<P> (self, parse_feed: &mut P) -> Result<T> where P: ParseFeed<Item=T>{
   if value == comparable {
     Ok(comparable)
   } else {
-    mismatch!("Expected {:?}, got {:?}", value, comparable)
+    Err(mismatch!("Expected {:?}, got {:?}", value, comparable))
   }
 }
 ---

@@ -4,72 +4,34 @@
 
 @s The library file
 
+The library file follows the typical Rust format - attributes, imports, modules, and then the body. However, macros are declared later which are used in submodules, so they must come before the module declarations.
+
 --- lib.rs+=
+@{crate attributes}
+
 @{imports}
+
+@{macros}
+
+@{modules}
 
 @{the runtime code}
 ---
 
-@s Parsing at runtime
-
-The runtime code has to act on some source of matchables. Ape represents this as a `ParseState`, which holds a backtracking `Iterator` of matchables.
-
---- the runtime code+=
-@{the ParseState trait}
+--- imports
 ---
 
---- the ParseState trait+=
-pub struct ParseState<I> where I: Iterator, I::Item: Clone {
-  iterator: BacktrackingIterator<I>,
-  global_position: usize,
-}
----
+@s Modules
 
---- imports+=
-extern crate backtracking_iterator;
-
-use backtracking_iterator::BacktrackingIterator;
----
-
-A pattern might partially consume some values before failing to match, so the `ParseState` needs a way to put values "back on" the internal iterator before trying an alternative branch. This is possible with `BacktrackingIterator`'s `backtrack()` method. Successful matches can be prevented from being backtracked on using the `forget()` method.
-
-@s Patterns
-
-Patterns are defined in their own module
-
---- lib.rs+=
-mod patterns;
-pub use self::patterns::*;
-
-@{the ParseFeed trait}
----
-
-Patterns don't act directly on a `ParseState`, to avoid carrying around the iterator information in the struct. They instead act on a more generic trait - `ParseFeed`
-
---- the ParseFeed trait+=
-pub trait ParseFeed {
-  type Item;
-
-  @{ParseFeed methods}
-}
----
-
-which has a minimal definition mirroring the `ParseState` methods
-  
---- ParseFeed methods+=
-fn next(&mut self) -> Option<Self::Item>;
----
-
-and a very basic `impl`
-
---- the ParseFeed trait+=
-impl<I> ParseFeed for ParseState<I> where I: Iterator, I::Item: Clone {
-  type Item = I::Item;
-
-  fn next(&mut self) -> Option<I::Item> {
-    self.iterator.next()
-  }
-}
+There are two modules in the crate
+ * `patterns`, which defines what a pattern is and how it can be used
+ * `feed`, which defines what a matchable feed of items is and how it can be used
+Their contents is re-exported for ease of use. 
+--- modules
+pub mod patterns;
+pub use crate::patterns::*;
+pub mod feed;
+pub use crate::feed::*;
 ---
 
 @s Errors
@@ -81,77 +43,78 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 pub struct Error {
   kind: ErrorKind,
-  message: Option<String>,
+  message: String,
 }
 
+impl Error {
+  pub fn kind(&self) -> &ErrorKind {
+    &self.kind
+  }
+
+  pub fn message(&self) -> &str {
+    &self.message
+  }
+}
+
+@{error kind annotation}
 pub enum ErrorKind {
   @{possible errors}
 }
 ---
 
-We provide some basic errors for handy use - an out-of-values error
-
+We provide some basic errors for handy use 
+ * an out-of-values error
+ * a mismatch error
+ * any other kind of error people might want to generate later
 --- possible errors+=
 UnexpectedEndOfInput,
----
-
-A mismatch error
-
---- possible errors+=
 Mismatch,
+Other,
 ---
 
-And any other kind of error people might want to generate later
+It's common for new errors to be added over time, so we consider this list non-exhaustive - this annotation enforces the possibility of new errors on programmers dealing with different kinds.
+--- crate attributes+=
+#![feature(non_exhaustive)]
+---
 
---- possible errors+=
-Other,
+--- error kind annotation
+#[non_exhaustive]
 ---
 
 @ss Error macros
 
 For ease of use, we also export some small macros for generating errors.
 
---- the runtime code+=
+--- macros+=
 @{error macros}
 ---
 
 This macro produces a customised mismatch error
-
 --- error macros+=
+#[macro_export]
 macro_rules ! mismatch {
   @{mismatch macro}
 }
 ---
-
 which accepts no arguments, and produces an empty message
-
 --- mismatch macro+=
 () => {{
-  Err(Error { kind: ErrorKind::Mismatch, message: None })
+  Error { kind: ErrorKind::Mismatch, message: format!("") }
 }};
 ---
-
 or variadic arguments, and produces a formatted message with the `format!` macro
-
 --- mismatch macro+=
 ($($arg:expr),+) => {{
-  Err(Error { kind: ErrorKind::Mismatch, message: Some(format!($($arg),+)) })
+  Error { kind: ErrorKind::Mismatch, message: format!($($arg),+) }
 }}; 
 ---
 
-@s Using the ParseFeed
-
-`ParseFeed` provides some basic methods to help with writing patterns.
-
-The first is a "expecting a next token" function which produces an error if there is no next token.
-
---- ParseFeed methods+=
-fn expect(&mut self) -> Result<Self::Item> {
-  if let Some(val) = self.next() {
-    Ok(val)
-  } else {
-    Err(Error { kind: ErrorKind::UnexpectedEndOfInput, message: None })
-  }
+This macro produces a simple end-of-input error
+--- error macros+=
+#[macro_export]
+macro_rules ! unexpected_end_of_input {
+  () => {{
+    Error { kind: ErrorKind::UnexpectedEndOfInput, message: format!("Unexpected end of input.") }
+  }};
 }
----
 

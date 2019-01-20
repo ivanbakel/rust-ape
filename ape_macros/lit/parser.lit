@@ -1092,10 +1092,7 @@ Fixity::Prefix => {
   }
 }
 ---
-The final case is unreachable, since we've covered it all above.
---- match the next piece+=
-_ => unreachable!(),
----
+After this is unreachable, since we've covered it all above.
 
 @s AST from the parse-tree
 
@@ -1232,7 +1229,7 @@ match operator.kind {
   Guard(tokens) => {
     if let Some(existing) = inner.guard {
       Err(Error {
-        message: format!("Unexpected guard after a pattern which already has a guard."),
+        message: format!("Unexpected guard `{}` after a pattern which already has a guard `{}`.", tokens, existing),
         location: operator_span,
       })
     } else {
@@ -1245,7 +1242,7 @@ match operator.kind {
     }
   },
   CodeBlock(tokens) => {
-    if let Some(existing) = inner.code_block {
+    if let Some(_existing) = inner.code_block {
       Err(Error {
         message: format!("Unexpected code block after a pattern which already has a code block."),
         location: operator_span,

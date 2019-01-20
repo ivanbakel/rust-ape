@@ -17,7 +17,7 @@ fn main() {
 ---
 
 --- double_guard.stderr
-error: Unexpected guard after a pattern which already has a guard.
+error: Unexpected guard `false` after a pattern which already has a guard `true`.
  --> $DIR/double_guard.rs:9:28
   |
 9 |   arb_peg!{ Foo if true if false }
@@ -42,7 +42,7 @@ fn main() {
 ---
 
 --- double_guard_with_brackets.stderr
-error: Unexpected guard after a pattern which already has a guard.
+error: Unexpected guard `false` after a pattern which already has a guard `true`.
  --> $DIR/double_guard_with_brackets.rs:9:30
   |
 9 |   arb_peg!{ (Foo if true) if false }

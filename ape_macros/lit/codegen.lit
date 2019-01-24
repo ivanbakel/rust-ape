@@ -20,7 +20,12 @@ The generated code is built inside-out - first the code for the body is generate
 @{imports}
 
 pub(crate) fn generate(pattern: Pattern) -> TokenStream {
-  generate_pattern_with_body(pattern, quote!(()))
+  let pattern = generate_pattern_with_body(pattern, quote!{});
+  quote! {
+    {
+      $pattern
+    }
+  }
 }
   
 fn generate_pattern_with_body(pattern: Pattern, given_body: TokenStream) -> TokenStream {
@@ -67,7 +72,7 @@ The guard is just a conditional on some variables which are in scope, so we can 
 if $guard {
   $return_value
 } else {
-  mismatch!("Expected the value to pass `$guard`")
+  Err(ape_runtime::mismatch!("Expected the value to pass `{}`", stringify!($guard)))
 }
 ---
 
@@ -89,7 +94,7 @@ let matching = match pattern.variant {
     @{pattern negation}
   },
   PatternType::Lookahead(pattern) => {
-    panic!("You tried to look ahead, which isn't implemented yet")
+    @{pattern lookahead}
   },
   PatternType::Optional(pattern) => {
     @{optional pattern}
@@ -117,7 +122,7 @@ quote! {
       $body
     })
   } else {
-    mismatch!("Expected value to match `$rust_pattern`")
+    Err(ape_runtime::mismatch!("Expected value to match `{}`", stringify!($rust_pattern)))
   }
 }
 ---
@@ -133,24 +138,43 @@ quote! {
 }
 ---
 
-The negation of a given pattern can be tested by simply swapping the success and error states
---- pattern negation
-let inner_pattern = generate_pattern_with_body(*pattern, quote!{});
+The lookahead of a pattern just involves matching it and then reverting to the previous parse-state
+--- pattern lookahead
+let lookahead_pattern = generate_pattern_with_body(*pattern, quote!{});
 quote! {
-  if let Ok(success) = {
-    $inner_pattern
+  let old_feed = feed.attempt();
+  if let Err(error) = {
+    $lookahead_pattern
   } {
-    mismatch!("Expected the pattern to fail")
+    Err(error)
   } else {
+    feed.commit(&old_feed);
     $body
   }
 }
 ---
 
-To make a pattern optional, we can simply discard the error state - but the return type becomes an `Option` of the original return type
+The negation of a given pattern can be tested by simply swapping the success and error states, as well as performing the lookahead logic
+--- pattern negation
+let inner_pattern = generate_pattern_with_body(*pattern, quote!{});
+quote! {
+  let old_feed = feed.attempt();
+  if let Ok(success) = {
+    $inner_pattern
+  } {
+    Err(ape_runtime::mismatch!("Expected the pattern to fail"))
+  } else {
+    feed.commit(&old_feed);
+    $body
+  }
+}
+---
+
+To make a pattern optional, we can simply discard the error state and restore the original feed - but the return type becomes an `Option` of the original return type
 --- optional pattern
 let inner_pattern = generate_pattern_with_body(*pattern, quote!{});
 quote! {
+  let old_feed = feed.attempt();
   if let Ok(_) = {
     $inner_pattern
   } {
@@ -158,6 +182,7 @@ quote! {
       $body
     }?))
   } else {
+    feed.commit(&old_feed);
     Ok(None)
   }
 }
@@ -214,20 +239,24 @@ matched = true;
 Once we've hit the minimum number of matches, the logic is more complicated: if there's been at least one match, we need to try to match the delimiter - but if we fail to, we simply fail out of the loop
 --- delimiter after the minimum matches+=
 if matched {
+  let old_feed = feed.attempt();
   if !{
     $delimiter
   }.is_ok() {
+    feed.commit(&old_feed);
     break;
   }
 }
 ---
 then we match the pattern - again, if we fail to match, we simply fail out of the loop
 --- after the minimum matches+=
+let old_feed = feed.attempt();
 if let Ok(_) = {
   $pattern
 } {
   matched = true;
 } else {
+  feed.commit(&old_feed);
   break;
 }
 ---
@@ -245,13 +274,13 @@ To alternate patterns, we could build each one with the given body, to allow alt
   * if the alternation appeared in the sequence, then failures after the alternation in the sequence would cause a rollback to the alternation, which is unexpected
   * the only way to not have the alternation as the top-level pattern is to bracket it, but brackets would also be expected to control scope - if a bracketed alternation produced bound variables that escaped the brackets, it would be confusing
 
-Instead, patterns are tested by using `or()`, and the body is run if there was a success
+Instead, patterns are tested by using `or_else()`, and the body is run if there was a success
 --- alternation of patterns
 let mut alternatives = patterns.into_iter().map(|pattern| {
   let generated = generate_pattern_with_body(pattern, quote!{});
-  quote! { 
-    {
-      generated
+  quote! {
+    { 
+      $generated
     }
   }
 });
@@ -260,11 +289,15 @@ let first = alternatives.next().expect("At least one pattern in the alternative 
 let alternation = alternatives.fold(first, |alternatives, next| {
   quote! {
     $alternatives
-      .or($next)
+      .or_else(|| {
+        feed.commit(initial_feed);
+        $next
+      })
   }
 });
 
 quote! {
+  let initial_feed = feed.attempt();
   $alternation.map(|_| {
     $body
   })
@@ -273,7 +306,7 @@ quote! {
 
 @ss Building the Pattern object
 
-Finally, we have to return a value which implements the `Pattern` trait, to allow it to actually be used for matching. We can do this by wrapping the matching code we've built in a closure - as the `Pattern` trait is implemented for anything implementing theright `Fn` signature.
+Finally, we have to return a value which implements the `Pattern` trait, to allow it to actually be used for matching. We can do this by wrapping the matching code we've built in a closure - as the `Pattern` trait is implemented for anything implementing the right `Fn` signature.
 --- build the pattern object
 quote! {
   |feed| {

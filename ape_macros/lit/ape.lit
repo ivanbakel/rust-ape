@@ -13,6 +13,8 @@ Ape is a library for producing Parser Expression Grammars over any type, using R
 Ape's macro code is a library file, which has the standard Rust format
 
 --- lib.rs
+@{features}
+
 @{crates}
 
 @{imports}
@@ -32,11 +34,13 @@ pub fn arb_peg(tokens: TokenStream) -> TokenStream {
 ---
 
 Procedural macros require the `proc_macro` crate. We also enable some optional features, namely the ability to quasi-quote Rust code (useful for a macro), the ability to use `Span`s for error message purposes, the ability to use macros as items, and the ability to create error messages.
---- crates+=
+--- features+=
 #![feature(proc_macro_quote)]
 #![feature(proc_macro_span)]
 #![feature(proc_macro_hygiene)]
 #![feature(proc_macro_diagnostic)]
+---
+--- crates+=
 extern crate proc_macro;
 ---
 

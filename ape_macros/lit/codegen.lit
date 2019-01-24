@@ -309,9 +309,11 @@ quote! {
 Finally, we have to return a value which implements the `Pattern` trait, to allow it to actually be used for matching. We can do this by wrapping the matching code we've built in a closure - as the `Pattern` trait is implemented for anything implementing the right `Fn` signature.
 --- build the pattern object
 quote! {
-  |feed| {
+  fn __parse<P: ape_runtime::ParseFeed<Item=bool>>(feed: &mut P) -> ape_runtime::Result<()> {
     $matching
   }
+
+  &__parse
 }
 ---
 

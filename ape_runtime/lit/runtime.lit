@@ -99,13 +99,13 @@ macro_rules ! mismatch {
 which accepts no arguments, and produces an empty message
 --- mismatch macro+=
 () => {{
-  Error { kind: ErrorKind::Mismatch, message: format!("") }
+  $crate::Error { kind: $crate::ErrorKind::Mismatch, message: format!("") }
 }};
 ---
 or variadic arguments, and produces a formatted message with the `format!` macro
 --- mismatch macro+=
 ($($arg:expr),+) => {{
-  Error { kind: ErrorKind::Mismatch, message: format!($($arg),+) }
+  $crate::Error { kind: $crate::ErrorKind::Mismatch, message: format!($($arg),+) }
 }}; 
 ---
 
@@ -114,7 +114,7 @@ This macro produces a simple end-of-input error
 #[macro_export]
 macro_rules ! unexpected_end_of_input {
   () => {{
-    Error { kind: ErrorKind::UnexpectedEndOfInput, message: format!("Unexpected end of input.") }
+    $crate::Error { kind: $crate::ErrorKind::UnexpectedEndOfInput, message: format!("Unexpected end of input.") }
   }};
 }
 

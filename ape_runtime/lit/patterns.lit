@@ -10,35 +10,49 @@
 
 @s The pattern trait
 
-The `Pattern` trait is Ape's representation of a generic way of doing runtime matching. Ape patterns are `Pattern`s, but so are many other things. A `Pattern` matches some input, which is decided by a type parameter
-
+The `Pattern` trait is Ape's representation of a generic way of doing runtime matching. A `Pattern` matches some input, which is decided by a type parameter constrained by being a `ParseFeed`
+--- imports+=
+use crate::{ParseFeed};
+---
 --- the pattern trait
-pub trait Pattern<Input> {
+pub trait Pattern<PF: ParseFeed> {
   @{pattern features}
 }
 
 @{some handy pattern impls}
 --- 
 
-What does a `Pattern` do? That depends on its `Input` type parameter, and some `Output` type. This are decided by whatever is implementing the trait, so it's an associated type.
-
+What does a `Pattern` do? That depends on its `PF` type parameter, and some `Output` type. The output is decided by the input and whatever is implementing the trait, so it's an associated type.
 --- pattern features+=
 type Output;
 ---
 
-Then a `Pattern` will take some form of `Input`, and maybe, if it matches, produce some kind of `Output`, or have the option to fail. These details will be the same as Ape's internal parser trait: the input is a `ParseFeed`, and errors are encoded as Ape's own `Error` type.
-
+Then a `Pattern` will take some form of `ParseFeed`, and maybe, if it matches, produce some kind of `Output`, or have the option to fail - errors are encoded as Ape's own `Error` type.
 --- imports+=
-use crate::{ParseFeed, Result, Error, ErrorKind};
+use crate::{Result};
 ---
 
 --- pattern features+=
-fn pmatch<P>(self, parse_feed: &mut P) -> Result<Self::Output> where P: ParseFeed<Item=Input>;
+fn pmatch(self, parse_feed: &mut PF) -> Result<Self::Output>;
 ---
 
-This may be a little opaque, so we can describe it with an example.
+Why are we constraining the trait in this way? After all, the trait could omit the `PF` parameter and instead have it be generic in `pmatch()`, but then we would encounter a problem: we want to be able to use functions as patterns, but a function wouldn't be able to implement that generic-in-method trait because it would need to be generic in its `Fn` trait, which Rust doesn't let us express. So instead `Pattern` impls are expected to be for all `ParseFeed`s for utility.
 
 @s Example impls
+
+@ss Function implementation
+
+Since `Pattern` is a "functional interface", it has a natural implementation on things which are functions of the same signature - just call the function.
+--- some handy pattern impls+=
+impl<Func, Input, Output, PF: ParseFeed<Item=Input>> Pattern<PF> for Func where
+  Func: Fn(&mut PF) -> Result<Output> {
+  type Output = Output;
+
+  fn pmatch(self, parse_feed: &mut PF) -> Result<Output> {
+    self(parse_feed)
+  }
+}
+---
 
 @ss Using Eq instances as patterns
 
@@ -54,13 +68,13 @@ use std::fmt;
 ---
 
 --- some handy pattern impls+=
-impl<T> Pattern<T> for Equatable<T> where T: Eq, T: fmt::Debug {
+impl<T, PF: ParseFeed<Item=T>> Pattern<PF> for Equatable<T> where T: Eq, T: fmt::Debug {
   @{the Eq impl}
 }
 ---
 
 --- the Eq impl+=
-fn pmatch<P> (self, parse_feed: &mut P) -> Result<T> where P: ParseFeed<Item=T>{
+fn pmatch(self, parse_feed: &mut PF) -> Result<T> {
   let comparable = parse_feed.expect()?;
   let Equatable(value) = self;
   if value == comparable {
@@ -90,21 +104,17 @@ pub struct Iter<I>(I);
 and then implement the trait
 
 --- some handy pattern impls+=
-impl<Input: Clone, I> Pattern<Input> for Iter<I> where I: Iterator, I::Item: Pattern<Input> {
-  type Output = Vec<<I::Item as Pattern<Input>>::Output>;
+impl<Input, PF: ParseFeed<Item=Input>, I> Pattern<PF> for Iter<I> where I: Iterator, I::Item: Pattern<PF> {
+  type Output = Vec<<I::Item as Pattern<PF>>::Output>;
 
-  fn pmatch<P> (self, parse_feed: &mut P) -> Result<Self::Output>
-    where P: ParseFeed<Item=Input> {
+  fn pmatch(self, parse_feed: &mut PF) -> Result<Self::Output> {
     let mut matched = vec![];
-
     let Iter(iter) = self;
-
     for pattern in iter {
         let result = pattern.pmatch(parse_feed)?;
 
         matched.push(result);
     }
-
     Ok(matched)
   }
 }

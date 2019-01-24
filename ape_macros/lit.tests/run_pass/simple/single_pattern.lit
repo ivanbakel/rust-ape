@@ -4,10 +4,9 @@
 
 --- single_pattern.rs
 // run-pass
+#![feature(use_extern_macro)]
 #![feature(proc_macro_hygiene)]
 extern crate ape;
-
-#[macro_use]
 extern crate ape_runtime;
 
 use ape::arb_peg;

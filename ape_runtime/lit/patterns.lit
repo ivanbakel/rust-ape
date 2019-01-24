@@ -13,7 +13,7 @@
 The `Pattern` trait is Ape's representation of a generic way of doing runtime matching. Ape patterns are `Pattern`s, but so are many other things. A `Pattern` matches some input, which is decided by a type parameter
 
 --- the pattern trait
-pub trait Pattern<Input: Clone> {
+pub trait Pattern<Input> {
   @{pattern features}
 }
 
@@ -54,7 +54,7 @@ use std::fmt;
 ---
 
 --- some handy pattern impls+=
-impl<T: Clone> Pattern<T> for Equatable<T> where T: Eq, T: fmt::Debug {
+impl<T> Pattern<T> for Equatable<T> where T: Eq, T: fmt::Debug {
   @{the Eq impl}
 }
 ---

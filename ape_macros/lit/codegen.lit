@@ -118,9 +118,7 @@ For a raw pattern, we can test a match and bind any variables with a simple `if 
 quote! {
   let next = feed.expect()?;
   if let $rust_pattern = next {
-    Ok({
-      $body
-    })
+    $body
   } else {
     Err(ape_runtime::mismatch!("Expected value to match `{}`", stringify!($rust_pattern)))
   }

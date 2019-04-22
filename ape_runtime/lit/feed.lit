@@ -8,6 +8,8 @@
 @{imports}
 
 @{the parsefeed trait}
+
+@{a parsefeed implementation}
 ---
 
 @s The ParseFeed trait
@@ -59,7 +61,7 @@ fn expect(&mut self) -> Result<Self::Item> {
   if let Some(val) = self.next() {
     Ok(val)
   } else {
-    Err(unexpected_end_of_input!())
+    Err(Error::unexpected_end_of_input())
   }
 }
 ---
@@ -73,4 +75,84 @@ fn expect_n(&mut self, n: usize) -> Result<Vec<Self::Item>> {
   Ok(items)
 }
 --- 
+
+@s A default implementation
+
+A simple default representation of a feed from an existing iterator is essential to allow Ape to be used in its intended use case - matching over iterators. This can be achieved by using a wrapper to extend an iterator with cloning functionality, which we do using the `backtracking_iterator` crate.
+--- imports
+extern crate backtracking_iterator;
+---
+
+Specifically, we use the ability to turn any iterator into a concurrent-safe, cloneable one, with no copies - by emitting references to items.
+--- imports
+use backtracking_iterator::concurrent::ConcurrentReferencingBacktrackingIterator;
+---
+
+Then the default representation is simply a wrapping struct, but named to make clear the change in item type
+--- a parsefeed implementation
+pub struct RefParseState<'item, Iter>(ConcurrentReferencingBacktrackingIterator<'item, Iter>) where Iter: 'item, Iter: Iterator;
+
+impl<'item, Iter> From<Iter> for RefParseState<'item, Iter> where Iter: 'item, Iter: Iterator {
+  fn from(iter: Iter) -> Self {
+    RefParseState(ConcurrentReferencingBacktrackingIterator::from(iter))
+  }
+}
+---
+which duplicates the iterator behaviour of its internal iterator copy
+--- a parsefeed implementation
+impl<'item, Iter> Clone for RefParseState<'item, Iter> where Iter: 'item, Iter: Iterator {
+  fn clone(&self) -> Self {
+    RefParseState(self.0.clone())
+  }
+}
+
+impl<'item, Iter> Iterator for RefParseState<'item, Iter> where Iter: 'item, Iter: Iterator {
+  type Item = &'item Iter::Item;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    self.0.next()
+  }
+}
+---
+
+All that remains is to explicitly implement the trait
+--- a parsefeed implementation
+impl<'item, Iter> ParseFeed for RefParseState<'item, Iter> where Iter: 'item, Iter: Iterator {
+}
+---
+
+The above also has a copying equivalent, for cases where the copying is inexpensive or a lack of references is desireable.
+--- imports
+use backtracking_iterator::concurrent::ConcurrentCopyingBacktrackingIterator;
+---
+
+This default implementation is also a wrapping struct, and the implementation is identical to the above, apart from the omission of ref-relevant code, such as the lifetime information
+--- a parsefeed implementation
+pub struct CopyParseState<Iter>(ConcurrentCopyingBacktrackingIterator<Iter>) where Iter: Iterator, Iter::Item: Clone;
+
+impl<Iter> From<Iter> for CopyParseState<Iter> where Iter: Iterator, Iter::Item: Clone {
+  fn from(iter: Iter) -> Self {
+    CopyParseState(ConcurrentCopyingBacktrackingIterator::from(iter))
+  }
+}
+
+impl<Iter> Clone for CopyParseState<Iter> where Iter: Iterator, Iter::Item: Clone {
+  fn clone(&self) -> Self {
+    CopyParseState(self.0.clone())
+  }
+}
+
+impl<Iter> Iterator for CopyParseState<Iter> where Iter: Iterator, Iter::Item: Clone {
+  type Item = Iter::Item;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    self.0.next()
+  }
+}
+
+impl<Iter> ParseFeed for CopyParseState<Iter> where Iter: Iterator, Iter::Item: Clone {
+}
+---
+
+
 

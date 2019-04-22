@@ -81,6 +81,21 @@ It's common for new errors to be added over time, so we consider this list non-e
 #[non_exhaustive]
 ---
 
+@ss Error constructors
+
+We then provide some constructors to avoid revealing the Error interior
+--- the runtime code
+impl Error {
+  pub fn mismatch(message: String) -> Self {
+    Error { kind: ErrorKind::Mismatch, message }
+  }
+  
+  pub fn unexpected_end_of_input() -> Self {
+    Error { kind: ErrorKind::UnexpectedEndOfInput, message: "Unexpected end of input.".to_owned() }
+  }
+}
+---
+
 @ss Error macros
 
 For ease of use, we also export some small macros for generating errors.
@@ -99,22 +114,13 @@ macro_rules ! mismatch {
 which accepts no arguments, and produces an empty message
 --- mismatch macro+=
 () => {{
-  $crate::Error { kind: $crate::ErrorKind::Mismatch, message: format!("") }
+  $crate::Error::mismatch(format!(""))
 }};
 ---
 or variadic arguments, and produces a formatted message with the `format!` macro
 --- mismatch macro+=
 ($($arg:expr),+) => {{
-  $crate::Error { kind: $crate::ErrorKind::Mismatch, message: format!($($arg),+) }
+  $crate::Error::mismatch(format!($($arg),+))
 }}; 
 ---
-
-This macro produces a simple end-of-input error
---- error macros+=
-#[macro_export]
-macro_rules ! unexpected_end_of_input {
-  () => {{
-    $crate::Error { kind: $crate::ErrorKind::UnexpectedEndOfInput, message: format!("Unexpected end of input.") }
-  }};
-}
 

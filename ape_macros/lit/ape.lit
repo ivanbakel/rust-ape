@@ -71,6 +71,18 @@ mod parsing;
 mod code;
 ---
 
+@s Debug macro
+
+To help with debugging the result of macro invocations, the crate also supplies a version of the original macro that outputs the generated code.
+--- content+=
+#[proc_macro]
+pub fn arb_peg_debug(tokens: TokenStream) -> TokenStream {
+  let generated_code = arb_peg(tokens);
+  print!("{}", generated_code);
+  generated_code
+}
+---
+
 @s Syn
 
 Syn is used to do some parsing of Rust syntax. Its features are explained more in the `parsing` module.

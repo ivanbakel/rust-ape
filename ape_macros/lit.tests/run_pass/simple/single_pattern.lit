@@ -4,18 +4,21 @@
 
 --- single_pattern.rs
 // run-pass
-#![feature(use_extern_macro)]
 #![feature(proc_macro_hygiene)]
 extern crate ape;
 extern crate ape_runtime;
 
 use ape::arb_peg;
+use ape_runtime::Pattern;
 
 fn main() {
   let pattern = arb_peg!{true};
 
-  let sequence = vec![true, false, true].into_iter();
+  let mut sequence = vec![true, false, true].into_iter();
+  let mut feed = ape_runtime::CopyParseState::from(sequence);
 
-  assert!(pattern.pmatch(sequence).is_ok());
+  assert!(pattern.pmatch(&mut feed).is_ok());
+  assert!(pattern.pmatch(&mut feed).is_err());
+  assert!(pattern.pmatch(&mut feed).is_ok());
 }
 ---

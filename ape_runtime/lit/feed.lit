@@ -50,7 +50,7 @@ Reverting on a failed state can be done by simply discarding an attempt.
 @s Using the ParseFeed
 
 --- imports
-use crate::{Result, Error, ErrorKind};
+use crate::{Result, Error};
 ---
 
 `ParseFeed` provides some basic methods to help with writing patterns.

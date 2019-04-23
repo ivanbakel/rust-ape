@@ -1,0 +1,28 @@
+@title Top-level pattern with no type signature
+
+@code_type rust .rs
+
+A test of a simple pattern which has no associated type annotation at the top level, and so, no type signature for the generated function. This should be an error.
+
+--- no_type_signature.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+
+use ape::arb_peg;
+
+fn main() {
+  arb_peg!{true}
+}
+---
+
+--- no_type_signature.stderr
+error: A top-level pattern must have a type annotation.
+ --> $DIR/no_type_signature.rs:7:3
+  |
+7 |   arb_peg!{true}
+  |   ^^^^^^^^^^^^^^
+
+error: aborting due to previous error
+
+---
+

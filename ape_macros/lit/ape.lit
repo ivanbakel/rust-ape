@@ -54,13 +54,11 @@ Finally, we define the high-level flow of the macro - first, an AST is build to 
 
 --- build an arbitrary parser from tokens
 let ast = self::parsing::parse(tokens);
-match ast {
-  Ok(tree) => self::code::generate(tree),
-  Err(parsing::Error { message, location }) => {
-    location.error(message).emit();
-    quote!()
-  },
-}
+let code = ast.and_then(|tree| self::code::generate(tree));
+code.unwrap_or_else(|parsing::Error { message, location }| {
+  location.error(message).emit();
+  quote!()
+})
 ---
 
 These steps are defined in the appropriate modules:

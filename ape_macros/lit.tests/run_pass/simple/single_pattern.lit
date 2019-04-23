@@ -12,7 +12,7 @@ use ape::arb_peg;
 use ape_runtime::Pattern;
 
 fn main() {
-  let pattern = arb_peg!{true};
+  let pattern = arb_peg!{true : bool -> ()};
 
   let mut sequence = vec![true, false, true].into_iter();
   let mut feed = ape_runtime::CopyParseState::from(sequence);

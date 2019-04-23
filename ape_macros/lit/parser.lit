@@ -89,6 +89,10 @@ fn try_parse_tokens_as_non_raw_pattern(token_iter: &mut token_stream::IntoIter) 
 }
 ---
 
+When dealing with Syn constructions, we may want to know their location.
+--- parsing imports+=
+use syn::spanned::Spanned;
+---
 
 @s Parsing stages
 
@@ -158,6 +162,7 @@ enum UnOpKind {
   Alias(Ident),
   Guard(TokenStream),
   CodeBlock(TokenStream),
+  TypeAnnotation(super::ast::TypeSignature),
   ZeroOrMore,
   OneOrMore,
   Optional,
@@ -196,17 +201,17 @@ impl std::fmt::Display for BinOp {
 impl std::fmt::Display for UnOp {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     use self::UnOpKind::*;
-    let repr = match self.kind {
-      Alias(_) => "alias `@`",
-      Guard(_) => "if guard",
-      CodeBlock(_) => "=> { .. }",
-      ZeroOrMore => "*",
-      OneOrMore => "+",
-      Optional => "?",
-      Negation => "!",
-      Lookahead => "->",
-    };
-    write!(f, "{}", repr)
+    match self.kind {
+      Alias(_) => write!(f, "alias `@`"),
+      Guard(_) => write!(f, "if guard"),
+      CodeBlock(_) => write!(f, "=> {{ .. }}"),
+      TypeAnnotation(ref type_annotation) => write!(f, "{} -> {}", type_annotation.input, type_annotation.output),
+      ZeroOrMore => write!(f, "*"),
+      OneOrMore => write!(f, "+"),
+      Optional => write!(f, "?"),
+      Negation => write!(f, "!"),
+      Lookahead => write!(f, "->"),
+    }
   }
 }
 ---
@@ -231,7 +236,7 @@ impl std::fmt::Display for Piece {
 }
 ---
 For error messages, it also helps to be able to talk about the location of a piece 
- * raw and runtime `Pice`s have spans which are the `join()` of their contents tokens
+ * raw and runtime `Piece`s have spans which are the `join()` of their contents tokens
  * we've already defined the span of operators
  * the span of a bracketed group is the join of all the spans of the inner pieces
 --- parsing contents+=
@@ -295,7 +300,7 @@ Converting an iterator of Rust tokens back into a `TokenStream` requires a trait
 --- parsing imports+=
 use std::iter::FromIterator;
 ---
-Converting a `syn` AST node back to tokens also requires a crate
+Converting a `syn` AST node back to tokens also requires a trait
 --- parsing imports+=
 use syn::export::ToTokens;
 ---
@@ -365,7 +370,13 @@ TokenTree::Ident(identifier) => {
   }
 },
 ---
-A punctuation mark is potentially the start of an operator
+A colon `:` is the start of a type annotation - no other non-raw pattern starts with it.
+--- try to parse the next token into a non-raw pattern+=
+TokenTree::Punct(ref punct) if punct.as_char() == ':' => {
+  @{match tokens for a type annotation}
+}
+---
+Any other punctuation mark is potentially the start of an operator
 --- try to parse the next token into a non-raw pattern+=
 TokenTree::Punct(op_start) => {
   match op_start.as_char() {
@@ -407,6 +418,47 @@ Some(Ok(Piece::Unary(UnOp {
   kind: UnOpKind::Guard(guard_tokens),
   location: span,
 })))
+---
+  
+@ss Building a type annotation
+
+Building a type annotation is simply a question of continually consuming unambiguous pieces, so the logic is uncomplicated.
+  * first, we consume the input type
+  * then, we consume the arrow `->`
+  * finally, we consume the output type
+--- match tokens for a type annotation+=
+match try_syn_parse::<syn::Type>(token_iter) {
+  Ok(input_type) => {
+    match (token_iter.next()?, token_iter.next()?) {
+      (TokenTree::Punct(ref first), TokenTree::Punct(ref second)) 
+      if first.as_char() == '-' && second.as_char() == '>' && first.spacing() == Spacing::Joint => {
+        match try_syn_parse::<syn::Type>(token_iter) {
+          Ok(output_type) => {
+            Some(Ok(Piece::Unary(UnOp {
+              location: input_type.span().unstable().join(output_type.span().unstable()).unwrap(),
+              kind: UnOpKind::TypeAnnotation(super::ast::TypeSignature {
+                input: input_type.into_token_stream().into(),
+                output: output_type.into_token_stream().into(),
+              }),
+            })))
+          },
+          Err(error) => {
+            Some(Err(error))
+          },
+        }
+      },
+      _ => {
+        Some(Err(Error {
+          location: input_type.span().unstable(),
+          message: format!("Expected an arrow `->` after the first type `{}`.", input_type.into_token_stream()),
+        }))
+      }
+    }
+  },
+  Err(error) => {
+    Some(Err(error))
+  }
+}
 ---
 
 
@@ -526,6 +578,7 @@ type Precedence = usize;
 where a higher value is higher precedence.
 
 The precedence, from lowest to highest, of the syntax features is defined as follows:
+ * type annotations
  * `/`
  * aliasing
  * code blocks
@@ -556,6 +609,7 @@ impl UnOp {
       Alias(_) => 2,
       Guard(_) => 5, 
       CodeBlock(_) => 3,
+      TypeAnnotation(_) => 1,
       ZeroOrMore => 6,
       OneOrMore => 6,
       Optional => 6,
@@ -583,6 +637,7 @@ impl UnOp {
       Alias(_) => Prefix,
       Guard(_) => Postfix, 
       CodeBlock(_) => Postfix,
+      TypeAnnotation(_) => Postfix,
       ZeroOrMore => Postfix,
       OneOrMore => Postfix,
       Optional => Postfix,
@@ -1117,12 +1172,14 @@ match parse_tree {
     guard: None,
     alias: None,
     code_block: None,
+    type_annotation: None,
   }),
   ParseTree::Runtime(tokens) => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Runtime(tokens),
     guard: None,
     alias: None,
     code_block: None,
+    type_annotation: None,
   }),
   ParseTree::Bracketed(inner_node) => build_ast_from_parsetree(*inner_node),
   ParseTree::Unary { operator, on } => {
@@ -1149,6 +1206,7 @@ match operator.kind {
     guard: None,
     alias: None,
     code_block: None,
+    type_annotation: None,
   }),
   OneOrMoreWithDelim => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Repetition {
@@ -1160,6 +1218,7 @@ match operator.kind {
     guard: None,
     alias: None,
     code_block: None,
+    type_annotation: None,
   }),
   Sequence => {
     let mut leaves = vec![build_ast_from_parsetree(*right)?];
@@ -1179,6 +1238,7 @@ match operator.kind {
       guard: None,
       alias: None,
       code_block: None,
+      type_annotation: None,
     })
   },
   Alternation => {
@@ -1199,6 +1259,7 @@ match operator.kind {
       guard: None,
       alias: None,
       code_block: None,
+      type_annotation: None,
     })
   },
 }
@@ -1223,6 +1284,7 @@ match operator.kind {
         guard: inner.guard,
         alias: Some(identifier),
         code_block: inner.code_block,
+        type_annotation: inner.type_annotation,
       })
     }
   },
@@ -1238,6 +1300,7 @@ match operator.kind {
         guard: Some(tokens),
         alias: inner.alias,
         code_block: inner.code_block,
+        type_annotation: inner.type_annotation,
       })
     }
   },
@@ -1253,6 +1316,23 @@ match operator.kind {
         guard: inner.guard,
         alias: inner.alias,
         code_block: Some(tokens),
+        type_annotation: inner.type_annotation,
+      })
+    }
+  },
+  TypeAnnotation(type_annotation) => {
+    if let Some(_existing) = inner.type_annotation {
+      Err(Error {
+        message: format!("Unexpected type annotation after a pattern which already has a type annotation."),
+        location: operator_span,
+      })
+    } else {
+      Ok(crate::ast::Pattern {
+        variant: inner.variant,
+        guard: inner.guard,
+        alias: inner.alias,
+        code_block: inner.code_block,
+        type_annotation: Some(type_annotation),
       })
     }
   },
@@ -1266,6 +1346,7 @@ match operator.kind {
     guard: None,
     alias: None,
     code_block: None,
+    type_annotation: None,
   }),
   OneOrMore => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Repetition {
@@ -1277,24 +1358,28 @@ match operator.kind {
     guard: None,
     alias: None,
     code_block: None,
+    type_annotation: None,
   }),
   Optional => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Optional(Box::new(inner)),
     guard: None,
     alias: None,
     code_block: None,
+    type_annotation: None,
   }),
   Negation => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Negation(Box::new(inner)),
     guard: None,
     alias: None,
     code_block: None,
+    type_annotation: None,
   }),
   Lookahead => Ok(crate::ast::Pattern {
     variant: crate::ast::PatternType::Lookahead(Box::new(inner)),
     guard: None,
     alias: None,
     code_block: None,
+    type_annotation: None,
   }),
 }
 ---

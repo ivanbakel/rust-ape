@@ -25,22 +25,26 @@ The generated code is built inside-out - first the code for the body is generate
 @{imports}
 
 pub(crate) fn generate(pattern: Pattern) -> Result<TokenStream> {
-  let pattern = generate_pattern_with_body(pattern, quote!{})?;
-  Ok(quote! {
-    {
-      $pattern
-    }
-  })
+  let pattern_type_signature = pattern.type_annotation.clone();
+  let pattern_code = generate_pattern(pattern)?;
+  @{build the pattern object}
+}
+
+fn generate_pattern(pattern: Pattern) -> Result<TokenStream> {
+  let body = {
+    @{generate code for body}
+  };
+  generate_pattern_with_body(pattern, body)
 }
   
 fn generate_pattern_with_body(pattern: Pattern, given_body: TokenStream) -> Result<TokenStream> {
   let body = {
-    @{generate code for body}
+    @{generate guarded body}
   };
   let matching = { 
     @{generate the matching code}
   };
-  @{build the pattern object}
+  Ok(matching)
 }
 ---
 
@@ -48,36 +52,36 @@ fn generate_pattern_with_body(pattern: Pattern, given_body: TokenStream) -> Resu
 
 The body has to actually run the code after the pattern matches, if it is defined - otherwise, the code body can be empty
 --- generate code for body +=
-let return_value = if let Some(code) = pattern.code_block {
+if let Some(code) = pattern.code_block.clone() {
   quote! {
-    $given_body
     Ok({
       $code
     })
   }
 } else {
   quote! {
-    $given_body 
     Ok(()) 
   }
-};
+}
 ---
 
-It also has to run the guard - if the guard fails, the pattern should fail. Otherwise, the pattern succeeds - and we run the code we generated above
---- generate code for body+=
+@s Generating the guard
+
+Every pattern can have a guard - if the guard fails, the pattern should fail. Otherwise, the pattern succeeds - and we run the pattern body
+--- generate guarded body+=
 if let Some(guard) = pattern.guard {
   quote! {
     @{generate the guarded code}
   }
 } else {
-  return_value
+  given_body
 }
 ---
 
-The guard is just a conditional on some variables which are in scope, so we can represent it as an if. Additionally, to help the user find what condition is failing, we can use the direct printing of the `TokenStream` in the error message. Finally, we embed the code in the centre
+The guard is just a conditional on some variables which are in scope, so we can represent it as an if. Additionally, to help the user find what condition is failing, we can use the direct printing of the `TokenStream` in the error message. Finally, we embed the body in the centre
 --- generate the guarded code
 if $guard {
-  $return_value
+  $given_body
 } else {
   Err(ape_runtime::mismatch!("Expected the value to pass `{}`", stringify!($guard)))
 }
@@ -145,7 +149,7 @@ quote! {
 
 The lookahead of a pattern just involves matching it and then reverting to the previous parse-state
 --- pattern lookahead
-let lookahead_pattern = generate_pattern_with_body(*pattern, quote!{})?;
+let lookahead_pattern = generate_pattern(*pattern)?;
 quote! {
   let old_feed = feed.attempt();
   if let Err(error) = {
@@ -161,7 +165,7 @@ quote! {
 
 The negation of a given pattern can be tested by simply swapping the success and error states, as well as performing the lookahead logic
 --- pattern negation
-let inner_pattern = generate_pattern_with_body(*pattern, quote!{})?;
+let inner_pattern = generate_pattern(*pattern)?;
 quote! {
   let old_feed = feed.attempt();
   if let Ok(success) = {
@@ -177,7 +181,7 @@ quote! {
 
 To make a pattern optional, we can simply discard the error state and restore the original feed - but the return type becomes an `Option` of the original return type
 --- optional pattern
-let inner_pattern = generate_pattern_with_body(*pattern, quote!{})?;
+let inner_pattern = generate_pattern(*pattern)?;
 quote! {
   let old_feed = feed.attempt();
   if let Ok(_) = {
@@ -195,9 +199,9 @@ quote! {
 
 To repeat a pattern, we can require it for `at_least` many repetitions, and make it optional until `at_most` many repetitions.
 --- repeated pattern
-let pattern = generate_pattern_with_body(*pattern, quote!{})?;
+let pattern = generate_pattern(*pattern)?;
 if let Some(delimiter) = delimiter {
-  let delimiter = generate_pattern_with_body(*delimiter, quote!{})?;
+  let delimiter = generate_pattern(*delimiter)?;
   quote! {
     let mut matched = false;
     for i in 0 .. $at_most {
@@ -282,7 +286,7 @@ To alternate patterns, we could build each one with the given body, to allow alt
 Instead, patterns are tested by using `or_else()`, and the body is run if there was a success
 --- alternation of patterns
 let mut alternatives = patterns.into_iter().map(|pattern| {
-  generate_pattern_with_body(pattern, quote!{})
+  generate_pattern(pattern)
 }).fold(Ok(vec![]), |acc, next| {
   let mut vec = acc?;
   let alt = next?;
@@ -300,8 +304,8 @@ let first = alternatives.next().expect("At least one pattern in the alternative 
 let alternation = alternatives.fold(first, |alternatives, next| {
   quote! {
     $alternatives
-      .or_else(|| {
-        feed.commit(initial_feed);
+      .or_else(|_previous_error| {
+        feed.commit(&initial_feed);
         $next
       })
   }
@@ -309,7 +313,7 @@ let alternation = alternatives.fold(first, |alternatives, next| {
 
 quote! {
   let initial_feed = feed.attempt();
-  $alternation.map(|_| {
+  $alternation.and_then(|_| {
     $body
   })
 }
@@ -321,13 +325,15 @@ Finally, we have to return a value which implements the `Pattern` trait, to allo
 
 However, to fully write the function signature, we need the pattern to have filled-in type information: if it is missing, that's an error.
 --- build the pattern object
-if let Some(super::ast::TypeSignature { input, output }) = pattern.type_annotation {
+if let Some(super::ast::TypeSignature { input, output }) = pattern_type_signature {
   Ok(quote! {
-    fn __parse<P: ape_runtime::ParseFeed<Item=$input>>(feed: &mut P) -> ape_runtime::Result<$output> {
-      $matching
-    }
+    {
+      fn __parse<P: ape_runtime::ParseFeed<Item=$input>>(feed: &mut P) -> ape_runtime::Result<$output> {
+        $pattern_code
+      }
   
-    &__parse
+      &__parse
+    }
   })
 } else {
   Err(Error {

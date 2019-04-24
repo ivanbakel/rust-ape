@@ -1,0 +1,25 @@
+@title A basic negation
+
+@code_type rust .rs
+
+--- basic_negation.rs
+// run-pass
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+extern crate ape_runtime;
+
+use ape::arb_peg;
+use ape_runtime::Pattern;
+
+fn main() {
+  let pattern = arb_peg!{!'a' : char -> ()};
+
+  let mut sequence = vec!['a', 'b', 'c'].into_iter();
+  let mut feed = ape_runtime::CopyParseState::from(sequence);
+
+  assert!(pattern.pmatch(&mut feed).is_err());
+  feed.next();
+  assert!(pattern.pmatch(&mut feed).is_ok());
+  assert!(pattern.pmatch(&mut feed).is_ok());
+}
+---

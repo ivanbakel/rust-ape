@@ -1,4 +1,4 @@
-![A stylized worker bee, the Ape logo](https://github.com/ivanbakel/rust-ape/raw/master/ape_logo.svg)
+![A stylized worker bee, the Ape logo](./ape_logo.svg)
 
 # Ape - the Arbitrary PEG library
 

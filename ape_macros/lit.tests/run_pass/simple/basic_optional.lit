@@ -1,0 +1,27 @@
+@title A simple optional pattern
+
+@code_type rust .rs
+
+--- basic_optional.rs
+// run-pass
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+extern crate ape_runtime;
+
+use ape::arb_peg;
+use ape_runtime::Pattern;
+
+fn main() {
+  let non_optional_pattern = arb_peg!{'a' : char -> ()};
+  let optional_pattern = arb_peg!{'a'? : char -> Option<()>};
+
+  let mut sequence = vec!['a'].into_iter();
+  let mut feed = ape_runtime::CopyParseState::from(sequence);
+
+  assert!(optional_pattern.pmatch(&mut feed).is_ok());
+  // Here, the feed should run out as 'a' was consumed, 
+  assert!(non_optional_pattern.pmatch(&mut feed).is_err());
+  // But the optional should still succeed
+  assert!(optional_pattern.pmatch(&mut feed).is_ok());
+}
+---

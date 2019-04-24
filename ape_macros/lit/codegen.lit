@@ -127,12 +127,13 @@ match pattern.variant {
 For a raw pattern, we can test a match and bind any variables with a simple `if let`. If there's no next token, we should error.
 --- raw rust pattern
 quote! {
-  let next = feed.expect()?;
-  if let $rust_pattern = next {
-    $body
-  } else {
-    Err(ape_runtime::mismatch!("Expected value to match `{}`", stringify!($rust_pattern)))
-  }
+  feed.expect().and_then(|next| {
+    if let $rust_pattern = next {
+      $body
+    } else {
+      Err(ape_runtime::mismatch!("Expected value to match `{}`", stringify!($rust_pattern)))
+    }
+  })
 }
 ---
 
@@ -142,8 +143,9 @@ quote! {
   let pattern = {
     $runtime
   };
-  pattern.pmatch(feed)?;
-  $body
+  pattern.pmatch(feed).and_then(|_| {
+    $body
+  })
 }
 ---
 
@@ -187,9 +189,9 @@ quote! {
   if let Ok(_) = {
     $inner_pattern
   } {
-    Ok(Some({
+    {
       $body
-    }?))
+    }.map(|success_value| Some(success_value))
   } else {
     feed.commit(&old_feed);
     Ok(None)
@@ -204,27 +206,40 @@ if let Some(delimiter) = delimiter {
   let delimiter = generate_pattern(*delimiter)?;
   quote! {
     let mut matched = false;
-    for i in 0 .. $at_most {
+    let mut i = 0_usize;
+    loop {
+      if i > $at_most {
+        break Ok(());
+      }
       if i >= $at_least {
-        @{delimiter before the minimum matches}
+        @{delimiter after the minimum matches}
         @{after the minimum matches}
       } else {
-        @{delimiter after the minimum matches}
+        @{delimiter before the minimum matches}
         @{before the minimum matches}
       }
-    }
-    $body
+      i += 1;
+    }.and_then(|_| {
+      $body
+    })
   }
 } else {
   quote! {
-    for i in 0 .. $at_most {
+    let mut matched = false;
+    let mut i = 0_usize;
+    loop {
+      if i > $at_most {
+        break Ok(());
+      }
       if i >= $at_least {
         @{after the minimum matches}
       } else {
         @{before the minimum matches}
       }
-    }
-    $body
+      i += 1;
+    }.and_then(|_| {
+      $body
+    })
   }
 }
 ---
@@ -232,16 +247,20 @@ if let Some(delimiter) = delimiter {
 The logic before we've hit the minimum number of matches is simple: if there has been at least one match, match the delimiter
 --- delimiter before the minimum matches+=
 if matched {
-  {
+  if let Err(error) = {
     $delimiter
-  }?;
+  } {
+    break Err(error);
+  }
 }
 ---
 then match the pattern.
 --- before the minimum matches+=
-{
+if let Err(error) = {
   $pattern
-}?;
+} {
+  break Err(error);
+}
 matched = true;
 ---
 
@@ -249,11 +268,11 @@ Once we've hit the minimum number of matches, the logic is more complicated: if 
 --- delimiter after the minimum matches+=
 if matched {
   let old_feed = feed.attempt();
-  if !{
+  if let Err(_) = {
     $delimiter
-  }.is_ok() {
+  } {
     feed.commit(&old_feed);
-    break;
+    break Ok(());
   }
 }
 ---
@@ -266,7 +285,7 @@ if let Ok(_) = {
   matched = true;
 } else {
   feed.commit(&old_feed);
-  break;
+  break Ok(());
 }
 ---
 

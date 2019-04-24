@@ -1,0 +1,26 @@
+@title The 'any' pattern
+
+@code_type rust .rs
+
+The 'any' pattern, `_`, should work as expected.
+
+--- any_pattern.rs
+// run-pass
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+extern crate ape_runtime;
+
+use ape::arb_peg;
+use ape_runtime::Pattern;
+
+fn main() {
+  let pattern = arb_peg!{_ : bool -> ()};
+
+  let mut sequence = vec![true, false, true].into_iter();
+  let mut feed = ape_runtime::CopyParseState::from(sequence);
+
+  assert!(pattern.pmatch(&mut feed).is_ok());
+  assert!(pattern.pmatch(&mut feed).is_ok());
+  assert!(pattern.pmatch(&mut feed).is_ok());
+}
+---

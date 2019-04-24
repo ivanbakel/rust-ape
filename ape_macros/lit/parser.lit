@@ -1224,15 +1224,12 @@ match operator.kind {
     let mut leaves = vec![build_ast_from_parsetree(*right)?];
  
     let mut current = *left;
-    while let ParseTree::Binary { operator: BinOp { kind, .. }, left: curr_left, right: curr_right } = current {
-      if let Sequence = kind {
-        leaves.push(build_ast_from_parsetree(*curr_right)?);
-        current = *curr_left;
-      } else {
-        break;
-      }
+    while let ParseTree::Binary { operator: BinOp { kind: Sequence, .. }, left: curr_left, right: curr_right } = current {
+      leaves.insert(0, build_ast_from_parsetree(*curr_right)?);
+      current = *curr_left;
     }
-    
+    leaves.insert(0, build_ast_from_parsetree(current)?);
+
     Ok(crate::ast::Pattern {
       variant: crate::ast::PatternType::Sequence(leaves),
       guard: None,
@@ -1245,14 +1242,11 @@ match operator.kind {
     let mut leaves = vec![build_ast_from_parsetree(*left)?];
  
     let mut current = *right;
-    while let ParseTree::Binary { operator: BinOp { kind, .. }, left: curr_left, right: curr_right } = current {
-      if let Alternation = kind {
-        leaves.push(build_ast_from_parsetree(*curr_left)?);
-        current = *curr_right;
-      } else {
-        break;
-      }
+    while let ParseTree::Binary { operator: BinOp { kind: Alternation, .. }, left: curr_left, right: curr_right } = current {
+      leaves.push(build_ast_from_parsetree(*curr_left)?);
+      current = *curr_right;
     }
+    leaves.push(build_ast_from_parsetree(current)?);
     
     Ok(crate::ast::Pattern {
       variant: crate::ast::PatternType::Alternation(leaves),

@@ -6,6 +6,8 @@
 @{imports}
 
 @{the pattern trait}
+
+@{the stateful pattern trait}
 ---
 
 @s The pattern trait
@@ -54,3 +56,62 @@ impl<Func, Input, Output, PF: ParseFeed<Item=Input>> Pattern<PF> for Func where
 }
 ---
 
+@s The stateful pattern trait 
+
+The `StatefulPattern` trait is an extension of the above idea - it functions similarly, but includes a state component which is passed by reference to each pattern. The state allows for the pattern to change behaviour at runtime, and is desireable for reasons of pattern reuseability. The state is tracked by an additional type variable in the trait, `State`.
+
+--- the stateful pattern trait
+pub trait StatefulPattern<PF: ParseFeed, State> {
+  @{stateful pattern features}
+}
+
+@{some handy stateful pattern impls}
+--- 
+
+The nature of the stateful pattern is no surprise when considering the original `Pattern` trait
+--- stateful pattern features+=
+type Output;
+
+fn pmatch(self, parse_feed: &mut PF, state: &State) -> Result<Self::Output>;
+---
+
+@s Example impls
+
+@ss Function implementation
+
+`StatefulPattern` is a "functional interface" as well, so it has an equivalent implementation for `Fn` traits.
+--- some handy stateful pattern impls+=
+impl<Func, Input, Output, PF: ParseFeed<Item=Input>, State> StatefulPattern<PF, State> for Func where
+  Func: Fn(&mut PF, &State) -> Result<Output> {
+  type Output = Output;
+
+  fn pmatch(self, parse_feed: &mut PF, state: &State) -> Result<Output> {
+    self(parse_feed, state)
+  }
+}
+---
+
+@ss All patterns are (generally) stateful
+
+On the other hand, a `Pattern` is really just a `StatefulPattern` *without* a state - or equivalently, with a state of `()`, the empty tuple. It can be handy to think about `Pattern`s in this way to allow for just one kind of code to be written - that handling `StatefulPattern`s.
+
+The issue is that we can't just define this on a `Pattern`-implementing type directly, because it would conflict with the previous functional definition. Instead, we create a wrapper, `Stateful`:
+--- some handy stateful pattern impls
+pub struct Stateful<P>(P);
+
+impl<Input, PF: ParseFeed<Item=Input>, P> StatefulPattern<PF, ()> for Stateful<P> where
+  P: Pattern<PF> {
+  type Output = P::Output;
+
+  fn pmatch(self, parse_feed: &mut PF, _empty_state: &()) -> Result<Self::Output> {
+    self.0.pmatch(parse_feed)
+  }
+}
+---
+
+and a function to easily turn a `Pattern` into a `Stateful` of that `Pattern`:
+--- pattern features
+fn stateful(&self) -> Stateful<&Self> {
+  Stateful(self)
+}
+---

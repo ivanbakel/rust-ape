@@ -1,0 +1,31 @@
+@title Ape grammar helpers
+
+@code_type rust .rs
+
+@s The crate
+
+The `ape_grammars` crate is a set of helper constructions for defining grammars over arbitrary types. It aims to simplify and abstract away common patterns and desirable features, to give more concise, more correct definitions.
+
+The library file has the standard form.
+--- lib.rs
+@{imports}
+
+@{modules}
+---
+
+@s Relation to `ape_runtime`
+
+This crate builds on the `ape_runtime` basic types, so we import that crate as well.
+--- imports
+extern crate ape_runtime;
+---
+
+@s Modules
+
+The modules of the crate are:
+  * `channels`, which provides a helper for splitting tokens into channels
+--- modules
+pub mod channels;
+---
+
+

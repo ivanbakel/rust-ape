@@ -1,0 +1,123 @@
+@title Channeling tokens
+
+@code_type rust .rs
+
+@s The channels module
+
+A common pattern after parsing is to separate emitted tokens into "channels" - subfeeds of tokens, with each token going to exactly one channel based on some selection criteria. This allows a second parser to consume only a subset of all the tokens produced bythe first: such as comments, which are often parsed, and later discarded.
+
+This module provides an implementation of this channeling behaviour.
+--- channels.rs
+use ape_runtime::{ParseFeed};
+
+@{the channeler}
+
+@{a channel}
+---
+
+@s The channeler
+
+The `Channeler` is what splits tokens into channels. It works on a `ParseFeed`, and takes some selector, which we represent as a `Fn`. The representation of a channel is left up to the user - we would typically expect a field-less `enum` - but must be `Eq`, for reasons that we will see later. This produces a kind of `ParseFeed`, so we make it `Clone`.
+--- the channeler
+#[derive(Clone)]
+pub struct Channeler<ChannelId, Feed, Selector>
+  where Feed: ParseFeed, Selector: Clone + Fn(&Feed::Item) -> ChannelId, ChannelId: Eq {
+  feed: Feed,
+  selector: Selector,
+}
+
+impl<ChannelId, Feed, Selector> Channeler<ChannelId, Feed, Selector>
+  where Feed: ParseFeed, Selector: Clone + Fn(&Feed::Item) -> ChannelId, ChannelId: Eq + Clone {
+  @{channeler features}
+}
+---
+
+This has a natural iterator implementation - as well as the next token, emit its `ChannelID` in a 2-tuple.
+--- the channeler
+impl<ChannelId, Feed, Selector> Iterator for Channeler<ChannelId, Feed, Selector>
+  where Feed: ParseFeed, Selector: Clone + Fn(&Feed::Item) -> ChannelId, ChannelId: Eq {
+  type Item = (ChannelId, Feed::Item);
+
+  fn next(&mut self) -> Option<Self::Item> {
+    match self.feed.next() {
+      Some(token) => {
+        let channel_id = {
+          (self.selector)(&token)
+        };
+        Some((channel_id, token))
+      },
+      None => {
+        None
+      },
+    }
+  }
+}
+---
+
+@s A channel
+
+Now that we have the channeler, it makes sense to define a `Channel` - a `ParseFeed` which only emits the subset of tokens that we care about. As all `ParseFeed`s, it must be `Clone`. The selector is stateless, so there is no harm in holding onto a reference of it - but the `ParseFeed` is not, so it is owned.
+--- a channel
+#[derive(Clone)]
+pub struct Channel<'selector, ChannelId, Feed, Selector>
+  where Feed: ParseFeed, Selector: Clone + Fn(&Feed::Item) -> ChannelId, ChannelId: Eq + Clone {
+  feed: Feed,
+  selector: &'selector Selector,
+  channel_id: ChannelId,
+}
+---
+
+The channel can then use the selector, and simply discard any tokens that don't match its channel ID. Here, the need for `Eq` becomes clear - we need to compare the channel ID for this channel to the ID for each emitted token.
+--- a channel
+impl<'selector, ChannelId, Feed, Selector> Iterator for Channel<'selector, ChannelId, Feed, Selector>
+  where Feed: ParseFeed, Selector: Clone + Fn(&Feed::Item) -> ChannelId, ChannelId: Eq + Clone {
+  type Item = Feed::Item;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    match self.feed.next() {
+      Some(token) => {
+        let channel_id = {
+          (self.selector)(&token)
+        };
+        if channel_id == self.channel_id {
+          Some(token)
+        } else {
+          self.next()
+        }
+      },
+      None => {
+        None
+      },
+    }
+  }
+}
+---
+
+Finally, we give a way to get a `Channel` from a `Channeler`:
+--- channeler features
+pub fn get_channel<'selflife>(&'selflife self, channel_id: ChannelId) -> Channel<'selflife, ChannelId, Feed, Selector> {
+  Channel {
+    feed: self.feed.clone(),
+    selector: &self.selector,
+    channel_id,
+  }
+}
+---
+
+It would also be helpful to be able to synchronize channels together - as it stands, they iterate independently to prevent any surprises in the code. To this end, we provide two ways of synchronising channels:
+  * `commit()`ing channels of different IDs simply synchronises the underlying `ParseFeed`.
+--- a channel
+impl<'selector, ChannelId, Feed, Selector> ParseFeed for Channel<'selector, ChannelId, Feed, Selector>
+  where Feed: ParseFeed, Selector: Clone + Fn(&Feed::Item) -> ChannelId, ChannelId: Eq + Clone {
+  fn commit(&mut self, attempt: &Self) where Self: Sized {
+    self.feed.commit(&attempt.feed);
+  }
+}
+---
+  * an additional method allows for a `Channeler` to be synchronised to some `Channel` - the reverse can just be done with the creation of a new channel
+--- channeler features
+pub fn synchronize_with<'selector>(&mut self, channel: &Channel<'selector, ChannelId, Feed, Selector>) {
+  self.feed.commit(&channel.feed);
+}
+---
+

@@ -1,0 +1,22 @@
+@title A runtime pattern
+
+@code_type rust .rs
+
+--- runtime_pattern.rs
+// run-pass
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+extern crate ape_runtime;
+
+use ape::arb_peg;
+use ape_runtime::Pattern;
+
+fn main() {
+  let wrapper = arb_peg!{ { arb_peg!{true : bool -> ()} } : bool -> ()};
+
+  let mut sequence = vec![true, false, true].into_iter();
+  let mut feed = ape_runtime::CopyParseState::from(sequence);
+
+  assert!(wrapper.pmatch(&mut feed).is_ok());
+}
+---

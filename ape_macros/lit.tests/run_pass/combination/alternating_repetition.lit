@@ -1,0 +1,22 @@
+@title A repetition of an alternation pattern
+
+@code_type rust .rs
+
+--- alternating_repetition.rs
+// run-pass
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+extern crate ape_runtime;
+
+use ape::{arb_peg};
+use ape_runtime::Pattern;
+
+fn main() {
+  let pattern = arb_peg!{('a' | 'b')+ : char -> ()};
+
+  let mut sequence = "abaabbbbaaababaaabababbbabbaa".chars();
+  let mut feed = ape_runtime::CopyParseState::from(sequence);
+
+  assert!(pattern.pmatch(&mut feed).is_ok());
+}
+---

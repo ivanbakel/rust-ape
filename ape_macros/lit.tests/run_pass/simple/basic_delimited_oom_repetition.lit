@@ -1,0 +1,49 @@
+@title A basic OOM (one-or-more) repetition with a delimiter
+
+@code_type rust .rs
+
+--- basic_delimited_oom_repetition.rs
+// run-pass
+#![feature(proc_macro_hygiene)]
+extern crate ape;
+extern crate ape_runtime;
+
+use ape::{arb_peg};
+use ape_runtime::Pattern;
+
+extern crate matches;
+
+use matches::matches;
+
+fn main() {
+  let oom_pattern = arb_peg!{true ++ false : bool -> ()};
+  
+  @{delimited OOM tests}
+}
+---
+
+The pattern should consume delimiters as expected.
+--- delimited OOM tests
+let mut sequence = vec![true, false, true, false, true].into_iter();
+let mut feed = ape_runtime::CopyParseState::from(sequence);
+
+assert!(oom_pattern.pmatch(&mut feed).is_ok());
+matches!(feed.next(), None);
+---  
+
+A OOM pattern with a delimiter does not accept 0 input.
+--- delimited OOM tests
+let mut sequence = vec![].into_iter();
+let mut feed = ape_runtime::CopyParseState::from(sequence);
+
+assert!(oom_pattern.pmatch(&mut feed).is_err());
+---  
+
+A OOM pattern which matches the delimiter but fails the subsequent pattern shouldn't eat the delimiter.
+--- delimited OOM tests
+let mut sequence = vec![true, false].into_iter();
+let mut feed = ape_runtime::CopyParseState::from(sequence);
+
+assert!(oom_pattern.pmatch(&mut feed).is_ok());
+matches!(feed.next(), Some(false));
+---

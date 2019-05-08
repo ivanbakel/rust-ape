@@ -54,6 +54,19 @@ impl<ChannelId, Feed, Selector> Iterator for Channeler<ChannelId, Feed, Selector
 }
 ---
 
+Finally, to create a channel in a handy way from an existing `ParseFeed`, we add a trait which extends `ParseFeed`. We can't auto-impl on trait objects, because we require `Self: Sized`.
+--- the channeler
+pub trait Channelable : ParseFeed {
+  fn channel<ChannelId, Selector>(self, selector: Selector) -> Channeler<ChannelId, Self, Selector>
+    where Self: Sized, Selector: Clone + Fn(&Self::Item) -> ChannelId, ChannelId: Eq {
+    Channeler {
+      feed: self,
+      selector,
+    }
+  } 
+}
+---
+
 @s A channel
 
 Now that we have the channeler, it makes sense to define a `Channel` - a `ParseFeed` which only emits the subset of tokens that we care about. As all `ParseFeed`s, it must be `Clone`. The selector is stateless, so there is no harm in holding onto a reference of it - but the `ParseFeed` is not, so it is owned.

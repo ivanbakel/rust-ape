@@ -11,7 +11,8 @@ use super::ast::{Pattern, PatternType};
 and produces the code for the macro invocation
 
 --- imports+=
-use crate::proc_macro::*;
+use proc_macro2::*;
+use quote::{quote};
 ---
 
 This logic can fail
@@ -55,7 +56,7 @@ The body has to actually run the code after the pattern matches, if it is define
 if let Some(code) = pattern.code_block.clone() {
   quote! {
     Ok({
-      $code
+      #code
     })
   }
 } else {
@@ -80,10 +81,10 @@ if let Some(guard) = pattern.guard {
 
 The guard is just a conditional on some variables which are in scope, so we can represent it as an if. Additionally, to help the user find what condition is failing, we can use the direct printing of the `TokenStream` in the error message. Finally, we embed the body in the centre
 --- generate the guarded code
-if $guard {
-  $given_body
+if #guard {
+  #given_body
 } else {
-  Err(ape::mismatch!("Expected the value to pass `{}`", stringify!($guard)))
+  Err(ape::mismatch!("Expected the value to pass `{}`", stringify!(#guard)))
 }
 ---
 
@@ -128,10 +129,10 @@ For a raw pattern, we can test a match and bind any variables with a simple `if 
 --- raw rust pattern
 quote! {
   feed.expect().and_then(|next| {
-    if let $rust_pattern = next {
-      $body
+    if let #rust_pattern = next {
+      #body
     } else {
-      Err(ape::mismatch!("Expected value to match `{}`", stringify!($rust_pattern)))
+      Err(ape::mismatch!("Expected value to match `{}`", stringify!(#rust_pattern)))
     }
   })
 }
@@ -141,10 +142,10 @@ For a runtime pattern, we can test a match by simply calling the method on the `
 --- runtime pattern
 quote! {
   let pattern = {
-    $runtime
+    #runtime
   };
   pattern.pmatch(feed).and_then(|_| {
-    $body
+    #body
   })
 }
 ---
@@ -155,12 +156,12 @@ let lookahead_pattern = generate_pattern(*pattern)?;
 quote! {
   let old_feed = feed.attempt();
   if let Err(error) = {
-    $lookahead_pattern
+    #lookahead_pattern
   } {
     Err(error)
   } else {
     feed.commit(&old_feed);
-    $body
+    #body
   }
 }
 ---
@@ -171,12 +172,12 @@ let inner_pattern = generate_pattern(*pattern)?;
 quote! {
   let old_feed = feed.attempt();
   if let Ok(success) = {
-    $inner_pattern
+    #inner_pattern
   } {
     Err(ape::mismatch!("Expected the pattern to fail"))
   } else {
     feed.commit(&old_feed);
-    $body
+    #body
   }
 }
 ---
@@ -187,10 +188,10 @@ let inner_pattern = generate_pattern(*pattern)?;
 quote! {
   let old_feed = feed.attempt();
   if let Ok(_) = {
-    $inner_pattern
+    #inner_pattern
   } {
     {
-      $body
+      #body
     }.map(|success_value| Some(success_value))
   } else {
     feed.commit(&old_feed);
@@ -208,10 +209,10 @@ if let Some(delimiter) = delimiter {
     let mut matched = false;
     let mut i = 0_usize;
     loop {
-      if i > $at_most {
+      if i > #at_most {
         break Ok(());
       }
-      if i >= $at_least {
+      if i >= #at_least {
         @{delimiter after the minimum matches}
         @{after the minimum matches}
       } else {
@@ -220,7 +221,7 @@ if let Some(delimiter) = delimiter {
       }
       i += 1;
     }.and_then(|_| {
-      $body
+      #body
     })
   }
 } else {
@@ -228,17 +229,17 @@ if let Some(delimiter) = delimiter {
     let mut matched = false;
     let mut i = 0_usize;
     loop {
-      if i > $at_most {
+      if i > #at_most {
         break Ok(());
       }
-      if i >= $at_least {
+      if i >= #at_least {
         @{after the minimum matches}
       } else {
         @{before the minimum matches}
       }
       i += 1;
     }.and_then(|_| {
-      $body
+      #body
     })
   }
 }
@@ -248,7 +249,7 @@ The logic before we've hit the minimum number of matches is simple: if there has
 --- delimiter before the minimum matches+=
 if matched {
   if let Err(error) = {
-    $delimiter
+    #delimiter
   } {
     break Err(error);
   }
@@ -257,7 +258,7 @@ if matched {
 then match the pattern.
 --- before the minimum matches+=
 if let Err(error) = {
-  $pattern
+  #pattern
 } {
   break Err(error);
 }
@@ -269,7 +270,7 @@ Once we've hit the minimum number of matches, the logic is more complicated: if 
 if matched {
   let old_feed = feed.attempt();
   if let Err(_) = {
-    $delimiter
+    #delimiter
   } {
     feed.commit(&old_feed);
     break Ok(());
@@ -280,7 +281,7 @@ then we match the pattern - again, if we fail to match, we simply fail out of th
 --- after the minimum matches+=
 let old_feed = feed.attempt();
 if let Ok(_) = {
-  $pattern
+  #pattern
 } {
   matched = true;
 } else {
@@ -314,7 +315,7 @@ let mut alternatives = patterns.into_iter().map(|pattern| {
 })?.into_iter().map(|generated|
   quote! {
     { 
-      $generated
+      #generated
     }
   }
 );
@@ -322,18 +323,18 @@ let first = alternatives.next().expect("At least one pattern in the alternative 
 
 let alternation = alternatives.fold(first, |alternatives, next| {
   quote! {
-    $alternatives
+    #alternatives
       .or_else(|_previous_error| {
         feed.commit(&initial_feed);
-        $next
+        #next
       })
   }
 });
 
 quote! {
   let initial_feed = feed.attempt();
-  $alternation.and_then(|_| {
-    $body
+  #alternation.and_then(|_| {
+    #body
   })
 }
 ---
@@ -347,8 +348,8 @@ However, to fully write the function signature, we need the pattern to have fill
 if let Some(super::ast::TypeSignature { input, output }) = pattern_type_signature {
   Ok(quote! {
     {
-      fn __parse<P: ape::ParseFeed<Item=$input>>(feed: &mut P) -> ape::Result<$output> {
-        $pattern_code
+      fn __parse<P: ape::ParseFeed<Item=#input>>(feed: &mut P) -> ape::Result<#output> {
+        #pattern_code
       }
   
       &__parse

@@ -28,37 +28,46 @@ An Ape parser is produced by the `pattern!` procedural macro, which does the wor
 
 --- content+=
 #[proc_macro]
-pub fn pattern(tokens: TokenStream) -> TokenStream {
+pub fn pattern(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
   @{build an arbitrary parser from tokens}
 }
 ---
 
-Procedural macros require the `proc_macro` crate. We also enable some optional features, namely the ability to quasi-quote Rust code (useful for a macro), the ability to use `Span`s for error message purposes, the ability to use macros as items, and the ability to create error messages.
+Procedural macros require the `proc_macro` crate. We also enable an optional feature, the ability to use macros as items.
 --- features+=
-#![feature(proc_macro_quote)]
-#![feature(proc_macro_span)]
 #![feature(proc_macro_hygiene)]
-#![feature(proc_macro_diagnostic)]
 ---
 --- crates+=
 extern crate proc_macro;
 ---
 
-and `TokenStream`, above, needs to be imported, along with the rest of the Rust AST
-
+However, we don't want to work on `proc_macro` types - they're not very useful featurewise. Instead, we will convert them to and from a more helpful variant in the `proc_macro2` crate.
+--- crates
+extern crate proc_macro2;
+---
+`TokenStream`, above, needs to be imported, along with the rest of the Rust AST
 --- imports+=
-use crate::proc_macro::*;
+use proc_macro2::*;
+---
+
+We also want to be able to quasi-quote generated code, for readability
+--- crates
+extern crate quote;
+use quote::{quote_spanned};
 ---
 
 Finally, we define the high-level flow of the macro - first, an AST is build to represent the pattern for which code needs to be generated; then, the generated Rust is produced by walking the AST.
 
 --- build an arbitrary parser from tokens
+let tokens = TokenStream::from(tokens);
 let ast = self::parsing::parse(tokens);
 let code = ast.and_then(|tree| self::code::generate(tree));
-code.unwrap_or_else(|parsing::Error { message, location }| {
-  location.error(message).emit();
-  quote!()
-})
+let generated = code.unwrap_or_else(|parsing::Error { message, location }| {
+  quote_spanned! {location=>
+    compile_error!(#message)
+  }
+});
+proc_macro::TokenStream::from(generated)
 ---
 
 These steps are defined in the appropriate modules:
@@ -74,7 +83,7 @@ mod code;
 To help with debugging the result of macro invocations, the crate also supplies a version of the original macro that outputs the generated code.
 --- content+=
 #[proc_macro]
-pub fn pattern_debug(tokens: TokenStream) -> TokenStream {
+pub fn pattern_debug(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
   let generated_code = pattern(tokens);
   print!("{}", generated_code);
   generated_code

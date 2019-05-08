@@ -10,11 +10,13 @@ proc-macro = true
 
 [dependencies]
 backtracking_iterator = "^0.4.4"
-syn = { version = "^0.15.26", features = ["full", "parsing", "proc-macro"] }
+syn = { version = "^0.15.26", features = ["full", "parsing"] }
+quote = "*"
+proc-macro2 = "^0.4.29"
 
 [dev-dependencies]
 compiletest_rs = "^0.3.18"
 matches = "^0.1.8"
-proc-macro2 = "^0.4.25"
 ape = { version = "^0.1", path = "../ape" }
+
 

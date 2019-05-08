@@ -37,7 +37,7 @@ pub variant: PatternType,
 The unit of Ape's grammar is a Rust pattern.
 
 --- ast imports+=
-use super::proc_macro::{TokenStream};
+use proc_macro2::{TokenStream};
 ---
 
 --- ast variants+=
@@ -106,7 +106,7 @@ pub guard: Option<TokenStream>,
  * aliasing the matches of patterns, by `<ident> @ { ... }`
 
 --- ast imports+=
-use super::proc_macro::Ident;
+use proc_macro2::Ident;
 ---
 
 --- pattern fields+=

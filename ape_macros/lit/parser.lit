@@ -10,10 +10,11 @@ The parsing logic is in a single file
 @{parsing contents}
 ---
 
-We make heavy use of types in the `proc_macro` crate
+We make heavy use of types in the `proc_macro2` crate
 
 --- parsing imports+=
-use proc_macro::*;
+use proc_macro2::*;
+use quote::{quote};
 ---
 
 To parse the macro token contents into an AST, we first declare a custom `Result` and `Error` type to allow for bad syntax
@@ -48,11 +49,12 @@ At several points, we want to interpret tokens as Rust code, using `syn`'s `pars
  * if there are no tokens left in the collection, re-add them until a non-pattern element is reached, or the input is finished - this is the most meaningful error message possible
 --- parsing contents+=
 fn try_syn_parse<P: syn::parse::Parse>(token_iter: &mut token_stream::IntoIter) -> Result<P> {
-  let mut tokens = token_iter.clone().collect::<Vec<_>>();
+  let mut tokens = token_iter.collect::<Vec<_>>();
+  *token_iter = TokenStream::from_iter(tokens.clone()).into_iter();
 
   while tokens.len() != 0 {
     let stream = TokenStream::from_iter(tokens.clone().into_iter());
-    if let Ok(node) = syn::parse::<P>(stream) {
+    if let Ok(node) = syn::parse2::<P>(stream) {
       for _token in tokens.iter() {
         token_iter.next();
       }
@@ -66,12 +68,16 @@ fn try_syn_parse<P: syn::parse::Parse>(token_iter: &mut token_stream::IntoIter) 
   while let Some(token) = token_iter.next() {
     tokens.push(token);
     
-    let current_error = syn::parse::<P>(TokenStream::from_iter(tokens.clone().into_iter()))
+    let current_error = syn::parse2::<P>(TokenStream::from_iter(tokens.clone().into_iter()))
       .map_err(|error| Error { 
-        location: error.span().unstable(),
+        location: error.span(),
         message: error.to_string(),
       });
-    if let Some(_parse_result) = try_parse_tokens_as_non_raw_pattern(&mut token_iter.clone()) {
+  
+    let tokens = token_iter.collect::<Vec<_>>();
+    *token_iter = TokenStream::from_iter(tokens.clone()).into_iter();
+
+    if let Some(_parse_result) = try_parse_tokens_as_non_raw_pattern(&mut TokenStream::from_iter(tokens).into_iter()) {
       return current_error;
     } 
     last_error = Some(current_error); 
@@ -315,7 +321,9 @@ Our algorithnm is
    * if there are still tokens, stop trying to parse, with the Rust pattern error
    * if there are no more tokens, stop parsing successfully
 --- turn the next set of tokens into a piece
-let mut non_raw_iter = token_iter.clone();
+let stream = TokenStream::from_iter(token_iter);
+token_iter = stream.clone().into_iter();
+let mut non_raw_iter = stream.into_iter();
 match try_parse_tokens_as_non_raw_pattern(&mut non_raw_iter) {
   Some(Ok(piece)) => {
     token_iter = non_raw_iter;
@@ -325,7 +333,9 @@ match try_parse_tokens_as_non_raw_pattern(&mut non_raw_iter) {
     return Err(unambiguous_error);
   },
   None => {
-    let mut pattern_iter = token_iter.clone();
+    let stream = TokenStream::from_iter(token_iter);
+    token_iter = stream.clone().into_iter();
+    let mut pattern_iter = stream.into_iter();
     match try_syn_parse::<syn::Pat>(&mut pattern_iter) {
       Ok(pattern) => {
         token_iter = pattern_iter;
@@ -435,7 +445,7 @@ match try_syn_parse::<syn::Type>(token_iter) {
         match try_syn_parse::<syn::Type>(token_iter) {
           Ok(output_type) => {
             Some(Ok(Piece::Unary(UnOp {
-              location: input_type.span().unstable().join(output_type.span().unstable()).unwrap(),
+              location: input_type.span().join(output_type.span()).unwrap(),
               kind: UnOpKind::TypeAnnotation(super::ast::TypeSignature {
                 input: input_type.into_token_stream().into(),
                 output: output_type.into_token_stream().into(),
@@ -449,7 +459,7 @@ match try_syn_parse::<syn::Type>(token_iter) {
       },
       _ => {
         Some(Err(Error {
-          location: input_type.span().unstable(),
+          location: input_type.span(),
           message: format!("Expected an arrow `->` after the first type `{}`.", input_type.into_token_stream()),
         }))
       }

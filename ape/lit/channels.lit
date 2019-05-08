@@ -8,7 +8,7 @@ A common pattern after parsing is to separate emitted tokens into "channels" - s
 
 This module provides an implementation of this channeling behaviour.
 --- channels.rs
-use ape::{ParseFeed};
+use super::{ParseFeed};
 
 @{the channeler}
 

@@ -2,6 +2,10 @@
 
 @code_type rust .rs
 
+@s The `ape` crate
+
+This crate provides the types and methods used at runtime when using Ape to parse and generate. The crate is intended to be flexible, so provides base types by default, and additional features under feature flags.
+
 @s The library file
 
 The library file follows the typical Rust format - attributes, imports, modules, and then the body. However, macros are declared later which are used in submodules, so they must come before the module declarations.
@@ -21,9 +25,9 @@ The library file follows the typical Rust format - attributes, imports, modules,
 --- imports
 ---
 
-@s Modules
+@s Base modules
 
-There are two modules in the crate
+There are two base modules in the crate
  * `patterns`, which defines what a pattern is and how it can be used
  * `feed`, which defines what a matchable feed of items is and how it can be used
 Their contents is re-exported for ease of use. 
@@ -122,5 +126,16 @@ or variadic arguments, and produces a formatted message with the `format!` macro
 ($($arg:expr),+) => {{
   $crate::Error::mismatch(format!($($arg),+))
 }}; 
+---
+
+@s Additional features
+
+The crate also provides several optional helper extensions for programmers as part of a larger parsing ecosystem. They are controlled by Cargo feature flags, and each is declared in a submodule.
+
+@ss Channels
+
+--- modules
+#[cfg(feature = "channels")]
+pub mod channels;
 ---
 

@@ -3,5 +3,4 @@
 members = [
   "ape_macros",
   "ape",
-  "ape_grammars",
 ]

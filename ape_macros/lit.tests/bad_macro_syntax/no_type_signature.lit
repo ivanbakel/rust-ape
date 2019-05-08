@@ -8,10 +8,10 @@ A test of a simple pattern which has no associated type annotation at the top le
 #![feature(proc_macro_hygiene)]
 extern crate ape_macros;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 
 fn main() {
-  arb_peg!{true}
+  pattern!{true}
 }
 ---
 
@@ -19,7 +19,7 @@ fn main() {
 error: A top-level pattern must have a type annotation.
  --> $DIR/no_type_signature.rs:7:3
   |
-7 |   arb_peg!{true}
+7 |   pattern!{true}
   |   ^^^^^^^^^^^^^^
 
 error: aborting due to previous error

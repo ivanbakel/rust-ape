@@ -7,12 +7,12 @@ The guard operator can only be used once per pattern - any more is considered mo
 #![feature(proc_macro_hygiene)]
 extern crate ape_macros;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 
 struct Foo {}
 
 fn main() {
-  arb_peg!{ Foo if true if false }
+  pattern!{ Foo if true if false }
 }
 ---
 
@@ -20,7 +20,7 @@ fn main() {
 error: Unexpected guard `false` after a pattern which already has a guard `true`.
  --> $DIR/double_guard.rs:9:28
   |
-9 |   arb_peg!{ Foo if true if false }
+9 |   pattern!{ Foo if true if false }
   |                            ^^^^^
 
 error: aborting due to previous error
@@ -32,12 +32,12 @@ This ignores bracketing, as it should not be syntactically significant apart fro
 #![feature(proc_macro_hygiene)]
 extern crate ape_macros;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 
 struct Foo {}
 
 fn main() {
-  arb_peg!{ (Foo if true) if false }
+  pattern!{ (Foo if true) if false }
 }
 ---
 
@@ -45,7 +45,7 @@ fn main() {
 error: Unexpected guard `false` after a pattern which already has a guard `true`.
  --> $DIR/double_guard_with_brackets.rs:9:30
   |
-9 |   arb_peg!{ (Foo if true) if false }
+9 |   pattern!{ (Foo if true) if false }
   |                              ^^^^^
 
 error: aborting due to previous error

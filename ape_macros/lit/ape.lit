@@ -22,13 +22,13 @@ Ape's macro code is a library file, which has the standard Rust format
 @{content}
 ---
 
-@s The `arb_peg!` macro
+@s The `pattern!` macro
  
-An Ape parser is produced by the `arb_peg!` procedural macro, which does the work of generating an Ape AST and outputting pure Rust. Proc macros are declared as functions over `TokenStream`s, with the `[proc_macro]` attribute
+An Ape parser is produced by the `pattern!` procedural macro, which does the work of generating an Ape AST and outputting pure Rust. Proc macros are declared as functions over `TokenStream`s, with the `[proc_macro]` attribute
 
 --- content+=
 #[proc_macro]
-pub fn arb_peg(tokens: TokenStream) -> TokenStream {
+pub fn pattern(tokens: TokenStream) -> TokenStream {
   @{build an arbitrary parser from tokens}
 }
 ---
@@ -74,8 +74,8 @@ mod code;
 To help with debugging the result of macro invocations, the crate also supplies a version of the original macro that outputs the generated code.
 --- content+=
 #[proc_macro]
-pub fn arb_peg_debug(tokens: TokenStream) -> TokenStream {
-  let generated_code = arb_peg(tokens);
+pub fn pattern_debug(tokens: TokenStream) -> TokenStream {
+  let generated_code = pattern(tokens);
   print!("{}", generated_code);
   generated_code
 }

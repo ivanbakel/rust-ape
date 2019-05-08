@@ -7,12 +7,12 @@ A pattern should never be immediately followed by another pattern - though we co
 #![feature(proc_macro_hygiene)]
 extern crate ape_macros;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 
 struct Foo {}
 
 fn main() {
-  arb_peg!{ Foo Foo }
+  pattern!{ Foo Foo }
 }
 ---
 
@@ -22,7 +22,7 @@ The expected error is that the second pattern is not expected after the first.
 error: Encountered an unexpected `Foo`
  --> $DIR/two_patterns.rs:9:17
   |
-9 |   arb_peg!{ Foo Foo }
+9 |   pattern!{ Foo Foo }
   |                 ^^^
 
 error: aborting due to previous error

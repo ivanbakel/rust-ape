@@ -8,7 +8,7 @@
 extern crate ape_macros;
 extern crate ape;
 
-use ape_macros::{arb_peg};
+use ape_macros::{pattern};
 use ape::Pattern;
 
 extern crate matches;
@@ -16,7 +16,7 @@ extern crate matches;
 use matches::matches;
 
 fn main() {
-  let zom_pattern = arb_peg!{true ** false : bool -> ()};
+  let zom_pattern = pattern!{true ** false : bool -> ()};
   
   @{delimited ZOM tests}
 }

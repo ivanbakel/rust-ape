@@ -7,13 +7,13 @@ The operators `**`, `++`, `*`, and `+` all have the same precedence - it is not 
 #![feature(proc_macro_hygiene)]
 extern crate ape_macros;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 
 struct Foo {}
 struct Bar {}
 
 fn main() {
-  arb_peg!{ Foo ** Bar+ }
+  pattern!{ Foo ** Bar+ }
 }
 ---
 
@@ -23,7 +23,7 @@ The expected error mentions the two operators used and the ambiguity between the
 error: Can't combine `+` and `**` without bracketing - their use is ambiguous
   --> $DIR/ambiguous_operators.rs:10:17
    |
-10 |   arb_peg!{ Foo ** Bar+ }
+10 |   pattern!{ Foo ** Bar+ }
    |                 ^^^^^^^
 
 error: aborting due to previous error

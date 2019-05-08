@@ -10,11 +10,11 @@ The 'any' pattern, `_`, should work as expected.
 extern crate ape_macros;
 extern crate ape;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 use ape::Pattern;
 
 fn main() {
-  let pattern = arb_peg!{_ : bool -> ()};
+  let pattern = pattern!{_ : bool -> ()};
 
   let mut sequence = vec![true, false, true].into_iter();
   let mut feed = ape::CopyParseState::from(sequence);

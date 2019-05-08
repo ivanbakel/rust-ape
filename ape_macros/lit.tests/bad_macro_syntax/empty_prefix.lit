@@ -8,10 +8,10 @@ A prefix operator, `!`, with no following expression. The expected error is that
 #![feature(proc_macro_hygiene)]
 extern crate ape_macros;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 
 fn main() {
-  arb_peg!{!}
+  pattern!{!}
 }
 ---
 
@@ -19,7 +19,7 @@ fn main() {
 error: Unexpected end of input while trying to build the pattern.
  --> $DIR/empty_prefix.rs:7:3
   |
-7 |   arb_peg!{!}
+7 |   pattern!{!}
   |   ^^^^^^^^^^^
 
 error: aborting due to previous error

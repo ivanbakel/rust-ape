@@ -8,12 +8,12 @@
 extern crate ape_macros;
 extern crate ape;
 
-use ape_macros::{arb_peg};
+use ape_macros::{pattern};
 use ape::Pattern;
 
 fn main() {
-  let oom_pattern = arb_peg!{true+ : bool -> ()};
-  let single_pattern = arb_peg!{true : bool -> ()};
+  let oom_pattern = pattern!{true+ : bool -> ()};
+  let single_pattern = pattern!{true : bool -> ()};
 
   let mut sequence = vec![true, true, true].into_iter();
   let mut feed = ape::CopyParseState::from(sequence);

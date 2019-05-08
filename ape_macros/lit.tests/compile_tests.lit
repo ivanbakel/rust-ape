@@ -1,4 +1,4 @@
-@title Compiler tests for the arb_peg macro
+@title Compiler tests for the pattern macro
 
 @code_type rust .rs
 

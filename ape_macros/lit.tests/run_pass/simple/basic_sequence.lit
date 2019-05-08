@@ -8,11 +8,11 @@
 extern crate ape_macros;
 extern crate ape;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 use ape::Pattern;
 
 fn main() {
-  let pattern = arb_peg!{('a' ~ 'b' ~ 'c') : char -> ()};
+  let pattern = pattern!{('a' ~ 'b' ~ 'c') : char -> ()};
 
   let mut sequence = vec!['a', 'b', 'c'].into_iter();
   let mut feed = ape::CopyParseState::from(sequence);

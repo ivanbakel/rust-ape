@@ -7,12 +7,12 @@ The code block operator can only be used once per pattern - any more is consider
 #![feature(proc_macro_hygiene)]
 extern crate ape_macros;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 
 struct Foo {}
 
 fn main() {
-  arb_peg!{ Foo => {} => {} }
+  pattern!{ Foo => {} => {} }
 }
 ---
 
@@ -20,7 +20,7 @@ fn main() {
 error: Unexpected code block after a pattern which already has a code block.
  --> $DIR/double_code_block.rs:9:23
   |
-9 |   arb_peg!{ Foo => {} => {} }
+9 |   pattern!{ Foo => {} => {} }
   |                       ^^^^^
 
 error: aborting due to previous error
@@ -32,12 +32,12 @@ This ignores bracketing, as it should not be syntactically significant apart fro
 #![feature(proc_macro_hygiene)]
 extern crate ape_macros;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 
 struct Foo {}
 
 fn main() {
-  arb_peg!{ (Foo => {}) => {} }
+  pattern!{ (Foo => {}) => {} }
 }
 ---
 
@@ -45,7 +45,7 @@ fn main() {
 error: Unexpected code block after a pattern which already has a code block.
  --> $DIR/double_code_block_with_brackets.rs:9:25
   |
-9 |   arb_peg!{ (Foo => {}) => {} }
+9 |   pattern!{ (Foo => {}) => {} }
   |                         ^^^^^
 
 error: aborting due to previous error

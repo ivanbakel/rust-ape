@@ -10,11 +10,11 @@ It should be possible to check for an end-of-file event (EOF) by negating the 'a
 extern crate ape_macros;
 extern crate ape;
 
-use ape_macros::arb_peg;
+use ape_macros::pattern;
 use ape::Pattern;
 
 fn main() {
-  let pattern = arb_peg!{!_ : bool -> ()};
+  let pattern = pattern!{!_ : bool -> ()};
 
   let mut sequence = vec![].into_iter();
   let mut feed = ape::CopyParseState::from(sequence);

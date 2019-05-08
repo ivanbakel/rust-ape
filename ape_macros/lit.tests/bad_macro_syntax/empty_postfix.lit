@@ -6,9 +6,9 @@ A postfix operator, `*`, with no preceding expression. The expected error is tha
 
 --- empty_postfix.rs
 #![feature(proc_macro_hygiene)]
-extern crate ape;
+extern crate ape_macros;
 
-use ape::arb_peg;
+use ape_macros::arb_peg;
 
 fn main() {
   arb_peg!{*}

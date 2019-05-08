@@ -5,17 +5,17 @@
 --- runtime_pattern.rs
 // run-pass
 #![feature(proc_macro_hygiene)]
+extern crate ape_macros;
 extern crate ape;
-extern crate ape_runtime;
 
-use ape::arb_peg;
-use ape_runtime::Pattern;
+use ape_macros::arb_peg;
+use ape::Pattern;
 
 fn main() {
-  let wrapper = arb_peg!{ { arb_peg!{true : bool -> ()} } : bool -> ()};
+  let wrapper = arb_peg!{ { use ape::Pattern; arb_peg!{true : bool -> ()} } : bool -> ()};
 
   let mut sequence = vec![true, false, true].into_iter();
-  let mut feed = ape_runtime::CopyParseState::from(sequence);
+  let mut feed = ape::CopyParseState::from(sequence);
 
   assert!(wrapper.pmatch(&mut feed).is_ok());
 }

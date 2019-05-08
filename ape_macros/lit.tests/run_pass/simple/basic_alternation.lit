@@ -5,17 +5,17 @@
 --- basic_alternation.rs
 // run-pass
 #![feature(proc_macro_hygiene)]
+extern crate ape_macros;
 extern crate ape;
-extern crate ape_runtime;
 
-use ape::arb_peg;
-use ape_runtime::Pattern;
+use ape_macros::arb_peg;
+use ape::Pattern;
 
 fn main() {
   let pattern = arb_peg!{('a' | 'b' | 'c') : char -> ()};
 
   let mut sequence = vec!['a', 'b', 'c', 'd'].into_iter();
-  let mut feed = ape_runtime::CopyParseState::from(sequence);
+  let mut feed = ape::CopyParseState::from(sequence);
 
   assert!(pattern.pmatch(&mut feed).is_ok());
   assert!(pattern.pmatch(&mut feed).is_ok());

@@ -6,9 +6,9 @@ A test of an empty macro invocation. With no pattern, this should be an error.
 
 --- empty_macro.rs
 #![feature(proc_macro_hygiene)]
-extern crate ape;
+extern crate ape_macros;
 
-use ape::arb_peg;
+use ape_macros::arb_peg;
 
 fn main() {
   arb_peg!{}

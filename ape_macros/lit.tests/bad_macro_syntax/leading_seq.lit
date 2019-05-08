@@ -6,9 +6,9 @@ A macro invocation starting with a `~`, a sequence operator. The expected error 
 
 --- leading_seq.rs
 #![feature(proc_macro_hygiene)]
-extern crate ape;
+extern crate ape_macros;
 
-use ape::arb_peg;
+use ape_macros::arb_peg;
 
 fn main() {
   arb_peg!{~}

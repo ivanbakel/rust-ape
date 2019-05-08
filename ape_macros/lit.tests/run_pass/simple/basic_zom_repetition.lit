@@ -5,18 +5,18 @@
 --- basic_zom_repetition.rs
 // run-pass
 #![feature(proc_macro_hygiene)]
+extern crate ape_macros;
 extern crate ape;
-extern crate ape_runtime;
 
-use ape::{arb_peg};
-use ape_runtime::Pattern;
+use ape_macros::{arb_peg};
+use ape::Pattern;
 
 fn main() {
   let zom_pattern = arb_peg!{true* : bool -> ()};
   let single_pattern = arb_peg!{true : bool -> ()};
 
   let mut sequence = vec![true, true, true].into_iter();
-  let mut feed = ape_runtime::CopyParseState::from(sequence);
+  let mut feed = ape::CopyParseState::from(sequence);
 
   assert!(zom_pattern.pmatch(&mut feed).is_ok());
   // Now, the feed is empty

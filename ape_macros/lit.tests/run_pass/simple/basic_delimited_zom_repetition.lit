@@ -5,11 +5,11 @@
 --- basic_delimited_zom_repetition.rs
 // run-pass
 #![feature(proc_macro_hygiene)]
+extern crate ape_macros;
 extern crate ape;
-extern crate ape_runtime;
 
-use ape::{arb_peg};
-use ape_runtime::Pattern;
+use ape_macros::{arb_peg};
+use ape::Pattern;
 
 extern crate matches;
 
@@ -25,7 +25,7 @@ fn main() {
 The pattern should consume delimiters as expected.
 --- delimited ZOM tests
 let mut sequence = vec![true, false, true, false, true].into_iter();
-let mut feed = ape_runtime::CopyParseState::from(sequence);
+let mut feed = ape::CopyParseState::from(sequence);
 
 assert!(zom_pattern.pmatch(&mut feed).is_ok());
 matches!(feed.next(), None);
@@ -34,7 +34,7 @@ matches!(feed.next(), None);
 A ZOM pattern with a delimiter still accepts 0 input.
 --- delimited ZOM tests
 let mut sequence = vec![].into_iter();
-let mut feed = ape_runtime::CopyParseState::from(sequence);
+let mut feed = ape::CopyParseState::from(sequence);
 
 assert!(zom_pattern.pmatch(&mut feed).is_ok());
 ---  
@@ -42,7 +42,7 @@ assert!(zom_pattern.pmatch(&mut feed).is_ok());
 A ZOM pattern which matches the delimiter but fails the subsequent pattern shouldn't eat the delimiter.
 --- delimited ZOM tests
 let mut sequence = vec![true, false].into_iter();
-let mut feed = ape_runtime::CopyParseState::from(sequence);
+let mut feed = ape::CopyParseState::from(sequence);
 
 assert!(zom_pattern.pmatch(&mut feed).is_ok());
 matches!(feed.next(), Some(false));

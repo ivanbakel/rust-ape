@@ -83,7 +83,7 @@ The guard is just a conditional on some variables which are in scope, so we can 
 if $guard {
   $given_body
 } else {
-  Err(ape_runtime::mismatch!("Expected the value to pass `{}`", stringify!($guard)))
+  Err(ape::mismatch!("Expected the value to pass `{}`", stringify!($guard)))
 }
 ---
 
@@ -131,7 +131,7 @@ quote! {
     if let $rust_pattern = next {
       $body
     } else {
-      Err(ape_runtime::mismatch!("Expected value to match `{}`", stringify!($rust_pattern)))
+      Err(ape::mismatch!("Expected value to match `{}`", stringify!($rust_pattern)))
     }
   })
 }
@@ -173,7 +173,7 @@ quote! {
   if let Ok(success) = {
     $inner_pattern
   } {
-    Err(ape_runtime::mismatch!("Expected the pattern to fail"))
+    Err(ape::mismatch!("Expected the pattern to fail"))
   } else {
     feed.commit(&old_feed);
     $body
@@ -347,7 +347,7 @@ However, to fully write the function signature, we need the pattern to have fill
 if let Some(super::ast::TypeSignature { input, output }) = pattern_type_signature {
   Ok(quote! {
     {
-      fn __parse<P: ape_runtime::ParseFeed<Item=$input>>(feed: &mut P) -> ape_runtime::Result<$output> {
+      fn __parse<P: ape::ParseFeed<Item=$input>>(feed: &mut P) -> ape::Result<$output> {
         $pattern_code
       }
   

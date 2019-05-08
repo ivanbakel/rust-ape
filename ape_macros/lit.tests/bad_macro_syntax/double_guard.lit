@@ -5,9 +5,9 @@
 The guard operator can only be used once per pattern - any more is considered more likely to be a user error than deliberate, and causes a message to be raised.
 --- double_guard.rs
 #![feature(proc_macro_hygiene)]
-extern crate ape;
+extern crate ape_macros;
 
-use ape::arb_peg;
+use ape_macros::arb_peg;
 
 struct Foo {}
 
@@ -30,9 +30,9 @@ error: aborting due to previous error
 This ignores bracketing, as it should not be syntactically significant apart from for precedence purposes.
 --- double_guard_with_brackets.rs
 #![feature(proc_macro_hygiene)]
-extern crate ape;
+extern crate ape_macros;
 
-use ape::arb_peg;
+use ape_macros::arb_peg;
 
 struct Foo {}
 

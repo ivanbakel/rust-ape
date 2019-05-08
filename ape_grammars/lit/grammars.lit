@@ -13,11 +13,11 @@ The library file has the standard form.
 @{modules}
 ---
 
-@s Relation to `ape_runtime`
+@s Relation to `ape`
 
-This crate builds on the `ape_runtime` basic types, so we import that crate as well.
+This crate builds on the `ape` basic types, so we import that crate as well.
 --- imports
-extern crate ape_runtime;
+extern crate ape;
 ---
 
 @s Modules

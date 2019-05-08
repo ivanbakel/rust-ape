@@ -49,8 +49,7 @@ At several points, we want to interpret tokens as Rust code, using `syn`'s `pars
  * if there are no tokens left in the collection, re-add them until a non-pattern element is reached, or the input is finished - this is the most meaningful error message possible
 --- parsing contents+=
 fn try_syn_parse<P: syn::parse::Parse>(token_iter: &mut token_stream::IntoIter) -> Result<P> {
-  let mut tokens = token_iter.collect::<Vec<_>>();
-  *token_iter = TokenStream::from_iter(tokens.clone()).into_iter();
+  let mut tokens = token_iter.clone().collect::<Vec<_>>();
 
   while tokens.len() != 0 {
     let stream = TokenStream::from_iter(tokens.clone().into_iter());
@@ -74,10 +73,7 @@ fn try_syn_parse<P: syn::parse::Parse>(token_iter: &mut token_stream::IntoIter) 
         message: error.to_string(),
       });
   
-    let tokens = token_iter.collect::<Vec<_>>();
-    *token_iter = TokenStream::from_iter(tokens.clone()).into_iter();
-
-    if let Some(_parse_result) = try_parse_tokens_as_non_raw_pattern(&mut TokenStream::from_iter(tokens).into_iter()) {
+    if let Some(_parse_result) = try_parse_tokens_as_non_raw_pattern(&mut token_iter.clone()) {
       return current_error;
     } 
     last_error = Some(current_error); 
@@ -321,9 +317,7 @@ Our algorithnm is
    * if there are still tokens, stop trying to parse, with the Rust pattern error
    * if there are no more tokens, stop parsing successfully
 --- turn the next set of tokens into a piece
-let stream = TokenStream::from_iter(token_iter);
-token_iter = stream.clone().into_iter();
-let mut non_raw_iter = stream.into_iter();
+let mut non_raw_iter = token_iter.clone();
 match try_parse_tokens_as_non_raw_pattern(&mut non_raw_iter) {
   Some(Ok(piece)) => {
     token_iter = non_raw_iter;
@@ -333,9 +327,7 @@ match try_parse_tokens_as_non_raw_pattern(&mut non_raw_iter) {
     return Err(unambiguous_error);
   },
   None => {
-    let stream = TokenStream::from_iter(token_iter);
-    token_iter = stream.clone().into_iter();
-    let mut pattern_iter = stream.into_iter();
+    let mut pattern_iter = token_iter.clone();
     match try_syn_parse::<syn::Pat>(&mut pattern_iter) {
       Ok(pattern) => {
         token_iter = pattern_iter;

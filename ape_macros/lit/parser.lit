@@ -242,7 +242,13 @@ For error messages, it also helps to be able to talk about the location of a pie
  * we've already defined the span of operators
  * the span of a bracketed group is the join of all the spans of the inner pieces
 --- parsing contents+=
-fn join_spans<I : Iterator<Item=Span>>(iterator: I) -> Span {
+
+fn stream_span(stream: &TokenStream) -> Span {
+  let iterator = stream.clone().into_iter().map(|token| token.span());
+  join_spans(iterator)
+}
+
+fn join_spans<I: Iterator<Item=Span>>(iterator: I) -> Span {
   let mut accumulator : Option<Span> = None;
   for val in iterator {
     if let Some(span) = accumulator {
@@ -253,11 +259,12 @@ fn join_spans<I : Iterator<Item=Span>>(iterator: I) -> Span {
   }
   accumulator.unwrap()
 }
+
 impl Piece {
   fn span(&self) -> Span {
     use self::Piece::*;
     match self {
-      Raw(tokens) | Runtime(tokens) => join_spans(tokens.clone().into_iter().map(|token| token.span())),
+      Raw(tokens) | Runtime(tokens) => stream_span(&tokens),
       Binary(operator) => operator.span(),
       Unary(operator) => operator.span(),
       Bracketed(contents) => join_spans(contents.iter().map(|piece| piece.span())),
@@ -415,10 +422,9 @@ let guard_tokens : TokenStream = match try_syn_parse::<syn::Expr>(token_iter) {
   },
 };
 
-let span = join_spans(guard_tokens.clone().into_iter().map(|token| token.span()));
 Some(Ok(Piece::Unary(UnOp {
+  location: stream_span(&guard_tokens),
   kind: UnOpKind::Guard(guard_tokens),
-  location: span,
 })))
 ---
   
@@ -1170,6 +1176,7 @@ What node of the AST we build depends on the node of the parse-tree we are inspe
 --- build an AST from the parse-tree
 match parse_tree {
   ParseTree::Raw(tokens) => Ok(crate::ast::Pattern {
+    location: stream_span(&tokens),
     variant: crate::ast::PatternType::Raw(tokens),
     guard: None,
     alias: None,
@@ -1177,6 +1184,7 @@ match parse_tree {
     type_annotation: None,
   }),
   ParseTree::Runtime(tokens) => Ok(crate::ast::Pattern {
+    location: stream_span(&tokens),
     variant: crate::ast::PatternType::Runtime(tokens),
     guard: None,
     alias: None,
@@ -1198,30 +1206,40 @@ match parse_tree {
 --- build an AST and then apply a binary operator
 use self::BinOpKind::*;
 match operator.kind {
-  ZeroOrMoreWithDelim => Ok(crate::ast::Pattern {
-    variant: crate::ast::PatternType::Repetition {
-      pattern: Box::new(build_ast_from_parsetree(*left)?),
-      at_least: quote!(0),
-      at_most: quote!(std::usize::MAX),
-      delimiter: Some(Box::new(build_ast_from_parsetree(*right)?)),
-    },
-    guard: None,
-    alias: None,
-    code_block: None,
-    type_annotation: None,
-  }),
-  OneOrMoreWithDelim => Ok(crate::ast::Pattern {
-    variant: crate::ast::PatternType::Repetition {
-      pattern: Box::new(build_ast_from_parsetree(*left)?),
-      at_least: quote!(1),
-      at_most: quote!(std::usize::MAX),
-      delimiter: Some(Box::new(build_ast_from_parsetree(*right)?)),
-    },
-    guard: None,
-    alias: None,
-    code_block: None,
-    type_annotation: None,
-  }),
+  ZeroOrMoreWithDelim => { 
+    let pattern = Box::new(build_ast_from_parsetree(*left)?);
+    let delimiter = Box::new(build_ast_from_parsetree(*right)?);
+    Ok(crate::ast::Pattern {
+      location: pattern.location.join(delimiter.location).unwrap(),
+      variant: crate::ast::PatternType::Repetition {
+        pattern,
+        at_least: quote!(0),
+        at_most: quote!(std::usize::MAX),
+        delimiter: Some(delimiter),
+      },
+      guard: None,
+      alias: None,
+      code_block: None,
+      type_annotation: None,
+    })
+  },
+  OneOrMoreWithDelim => { 
+    let pattern = Box::new(build_ast_from_parsetree(*left)?);
+    let delimiter = Box::new(build_ast_from_parsetree(*right)?);
+    Ok(crate::ast::Pattern {
+      location: pattern.location.join(delimiter.location).unwrap(),
+      variant: crate::ast::PatternType::Repetition {
+        pattern,
+        at_least: quote!(1),
+        at_most: quote!(std::usize::MAX),
+        delimiter: Some(delimiter),
+      },
+      guard: None,
+      alias: None,
+      code_block: None,
+      type_annotation: None,
+    })
+  },
   Sequence => {
     let mut leaves = vec![build_ast_from_parsetree(*right)?];
  
@@ -1233,6 +1251,7 @@ match operator.kind {
     leaves.insert(0, build_ast_from_parsetree(current)?);
 
     Ok(crate::ast::Pattern {
+      location: join_spans(leaves.iter().map(|pattern| pattern.location)),
       variant: crate::ast::PatternType::Sequence(leaves),
       guard: None,
       alias: None,
@@ -1251,6 +1270,7 @@ match operator.kind {
     leaves.push(build_ast_from_parsetree(current)?);
     
     Ok(crate::ast::Pattern {
+      location: join_spans(leaves.iter().map(|pattern| pattern.location)),
       variant: crate::ast::PatternType::Alternation(leaves),
       guard: None,
       alias: None,
@@ -1277,6 +1297,7 @@ match operator.kind {
     } else {
       Ok(crate::ast::Pattern {
         variant: inner.variant,
+        location: operator_span.join(inner.location).unwrap(),
         guard: inner.guard,
         alias: Some(identifier),
         code_block: inner.code_block,
@@ -1293,6 +1314,7 @@ match operator.kind {
     } else {
       Ok(crate::ast::Pattern {
         variant: inner.variant,
+        location: operator_span.join(inner.location).unwrap(),
         guard: Some(tokens),
         alias: inner.alias,
         code_block: inner.code_block,
@@ -1309,6 +1331,7 @@ match operator.kind {
     } else {
       Ok(crate::ast::Pattern {
         variant: inner.variant,
+        location: operator_span.join(inner.location).unwrap(),
         guard: inner.guard,
         alias: inner.alias,
         code_block: Some(tokens),
@@ -1325,6 +1348,7 @@ match operator.kind {
     } else {
       Ok(crate::ast::Pattern {
         variant: inner.variant,
+        location: operator_span.join(inner.location).unwrap(),
         guard: inner.guard,
         alias: inner.alias,
         code_block: inner.code_block,
@@ -1333,6 +1357,7 @@ match operator.kind {
     }
   },
   ZeroOrMore => Ok(crate::ast::Pattern {
+    location: operator_span.join(inner.location).unwrap(),
     variant: crate::ast::PatternType::Repetition {
       pattern: Box::new(inner),
       at_least: quote!(0),
@@ -1345,6 +1370,7 @@ match operator.kind {
     type_annotation: None,
   }),
   OneOrMore => Ok(crate::ast::Pattern {
+    location: operator_span.join(inner.location).unwrap(),
     variant: crate::ast::PatternType::Repetition {
       pattern: Box::new(inner),
       at_least: quote!(1),
@@ -1357,6 +1383,7 @@ match operator.kind {
     type_annotation: None,
   }),
   Optional => Ok(crate::ast::Pattern {
+    location: operator_span.join(inner.location).unwrap(),
     variant: crate::ast::PatternType::Optional(Box::new(inner)),
     guard: None,
     alias: None,
@@ -1364,6 +1391,7 @@ match operator.kind {
     type_annotation: None,
   }),
   Negation => Ok(crate::ast::Pattern {
+    location: operator_span.join(inner.location).unwrap(),
     variant: crate::ast::PatternType::Negation(Box::new(inner)),
     guard: None,
     alias: None,
@@ -1371,6 +1399,7 @@ match operator.kind {
     type_annotation: None,
   }),
   Lookahead => Ok(crate::ast::Pattern {
+    location: operator_span.join(inner.location).unwrap(),
     variant: crate::ast::PatternType::Lookahead(Box::new(inner)),
     guard: None,
     alias: None,

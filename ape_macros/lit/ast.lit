@@ -13,21 +13,18 @@ The AST code is a single file
 @s The AST types
 
 A pattern is represented as a struct
-
 --- ast contents+=
 pub(crate) struct Pattern {
   @{pattern fields}
 }
 ---
 
-with many possible variants
-
+with many possible variants 
 --- ast contents+=
 pub(crate) enum PatternType {
   @{ast variants}
 }
----
-  
+--- 
 --- pattern fields+=
 pub variant: PatternType,
 ---
@@ -135,7 +132,7 @@ Runtime(TokenStream),
 
 Since Ape allows for rules over arbitrary types and returning arbitrary types, rules can also be annotated with an input-output type arrow, `<type> -> <type>`. However, it's not necessary to know the type of *every* rule, so the annotation is optional.
 --- pattern fields+=
-pub type_annotation: Option<TypeSignature>
+pub type_annotation: Option<TypeSignature>,
 ---
 The TypeSignature struct is a simple representation of the arrow.
 --- ast contents+=
@@ -145,3 +142,14 @@ pub(crate) struct TypeSignature {
   pub output: TokenStream,
 }
 ---
+
+@s Error reporting
+
+It can be useful, for error reporting, to link a problem in the code with a pattern in the AST - for this, we need to produce a `Span` for each `Pattern`
+--- ast imports 
+use proc_macro2::{Span};
+---
+--- pattern fields
+pub location: Span,
+---
+

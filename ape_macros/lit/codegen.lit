@@ -7,12 +7,10 @@ The codegen logic falls under one main function, which takes the AST generated b
 --- imports+=
 use super::ast::{Pattern, PatternType};
 ---
-
 and produces the code for the macro invocation
 
 --- imports+=
 use proc_macro2::*;
-use quote::{quote};
 ---
 
 This logic can fail
@@ -49,12 +47,21 @@ fn generate_pattern_with_body(pattern: Pattern, given_body: TokenStream) -> Resu
 }
 ---
 
+When generating code, we want to link any errors we get to the region of the whole pattern that produced them - this is possible with `quote_spanned!`, which produces tokens linked to a `Span` in the original macro. We also sometimes don't have a span for some code, so we just use `quote!`.
+--- imports
+use quote::{quote, quote_spanned};
+---
+Getting the `Span` of some types requires a trait
+--- imports
+use syn::spanned::Spanned;
+---
+
 @s Generating the pattern body
 
 The body has to actually run the code after the pattern matches, if it is defined - otherwise, the code body can be empty
 --- generate code for body +=
 if let Some(code) = pattern.code_block.clone() {
-  quote! {
+  quote_spanned! {code.span()=>
     Ok({
       #code
     })
@@ -71,7 +78,7 @@ if let Some(code) = pattern.code_block.clone() {
 Every pattern can have a guard - if the guard fails, the pattern should fail. Otherwise, the pattern succeeds - and we run the pattern body
 --- generate guarded body+=
 if let Some(guard) = pattern.guard {
-  quote! {
+  quote_spanned! {guard.span()=>
     @{generate the guarded code}
   }
 } else {
@@ -92,6 +99,7 @@ if #guard {
 
 The main part of the variant matching is a big `match` statement
 --- generate the matching code
+let location = pattern.location;
 match pattern.variant {
   PatternType::Raw(rust_pattern) => {
     @{raw rust pattern}
@@ -127,7 +135,7 @@ match pattern.variant {
 
 For a raw pattern, we can test a match and bind any variables with a simple `if let`. If there's no next token, we should error.
 --- raw rust pattern
-quote! {
+quote_spanned! {location=>
   feed.expect().and_then(|next| {
     if let #rust_pattern = next {
       #body
@@ -140,7 +148,7 @@ quote! {
 
 For a runtime pattern, we can test a match by simply calling the method on the `Pattern` trait implementation.
 --- runtime pattern
-quote! {
+quote_spanned! {location=>
   let pattern = {
     #runtime
   };
@@ -153,7 +161,7 @@ quote! {
 The lookahead of a pattern just involves matching it and then reverting to the previous parse-state
 --- pattern lookahead
 let lookahead_pattern = generate_pattern(*pattern)?;
-quote! {
+quote_spanned! {location=>
   let old_feed = feed.attempt();
   if let Err(error) = {
     #lookahead_pattern
@@ -169,7 +177,7 @@ quote! {
 The negation of a given pattern can be tested by simply swapping the success and error states, as well as performing the lookahead logic
 --- pattern negation
 let inner_pattern = generate_pattern(*pattern)?;
-quote! {
+quote_spanned! {location=>
   let old_feed = feed.attempt();
   if let Ok(success) = {
     #inner_pattern
@@ -185,7 +193,7 @@ quote! {
 To make a pattern optional, we can simply discard the error state and restore the original feed - but the return type becomes an `Option` of the original return type
 --- optional pattern
 let inner_pattern = generate_pattern(*pattern)?;
-quote! {
+quote_spanned! {location=>
   let old_feed = feed.attempt();
   if let Ok(_) = {
     #inner_pattern
@@ -205,7 +213,7 @@ To repeat a pattern, we can require it for `at_least` many repetitions, and make
 let pattern = generate_pattern(*pattern)?;
 if let Some(delimiter) = delimiter {
   let delimiter = generate_pattern(*delimiter)?;
-  quote! {
+  quote_spanned! {location=>
     let mut matched = false;
     let mut i = 0_usize;
     loop {
@@ -225,7 +233,7 @@ if let Some(delimiter) = delimiter {
     })
   }
 } else {
-  quote! {
+  quote_spanned! {location=>
     let mut matched = false;
     let mut i = 0_usize;
     loop {
@@ -331,7 +339,7 @@ let alternation = alternatives.fold(first, |alternatives, next| {
   }
 });
 
-quote! {
+quote_spanned! {location=>
   let initial_feed = feed.attempt();
   #alternation.and_then(|_| {
     #body
@@ -346,8 +354,9 @@ Finally, we have to return a value which implements the `Pattern` trait, to allo
 However, to fully write the function signature, we need the pattern to have filled-in type information: if it is missing, that's an error.
 --- build the pattern object
 if let Some(super::ast::TypeSignature { input, output }) = pattern_type_signature {
-  Ok(quote! {
+  Ok(quote_spanned! {Span::call_site()=>
     {
+      #[allow(irrefutable_let_patterns)]
       fn __parse<P: ape::ParseFeed<Item=#input>>(feed: &mut P) -> ape::Result<#output> {
         #pattern_code
       }

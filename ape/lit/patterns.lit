@@ -46,7 +46,7 @@ Why are we constraining the trait in this way? After all, the trait could omit t
 
 Since `Pattern` is a "functional interface", it has a natural implementation on things which are functions of the same signature - just call the function.
 --- some handy pattern impls+=
-impl<Func, Input, Output, PF: ParseFeed<Item=Input>> Pattern<PF> for Func where
+impl<Func, Input, Output, PF: ParseFeed<Token=Input>> Pattern<PF> for Func where
   Func: Fn(&mut PF) -> Result<Output> {
   type Output = Output;
 
@@ -81,7 +81,7 @@ fn pmatch(self, parse_feed: &mut PF, state: &State) -> Result<Self::Output>;
 
 `StatefulPattern` is a "functional interface" as well, so it has an equivalent implementation for `Fn` traits.
 --- some handy stateful pattern impls+=
-impl<Func, Input, Output, PF: ParseFeed<Item=Input>, State> StatefulPattern<PF, State> for Func where
+impl<Func, Input, Output, PF: ParseFeed<Token=Input>, State> StatefulPattern<PF, State> for Func where
   Func: Fn(&mut PF, &State) -> Result<Output> {
   type Output = Output;
 
@@ -99,7 +99,7 @@ The issue is that we can't just define this on a `Pattern`-implementing type dir
 --- some handy stateful pattern impls
 pub struct Stateful<P>(P);
 
-impl<Input, PF: ParseFeed<Item=Input>, P> StatefulPattern<PF, ()> for Stateful<P> where
+impl<Input, PF: ParseFeed<Token=Input>, P> StatefulPattern<PF, ()> for Stateful<P> where
   P: Pattern<PF> {
   type Output = P::Output;
 

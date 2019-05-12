@@ -357,7 +357,7 @@ if let Some(super::ast::TypeSignature { input, output }) = pattern_type_signatur
   Ok(quote_spanned! {Span::call_site()=>
     {
       #[allow(irrefutable_let_patterns)]
-      fn __parse<P: ape::ParseFeed<Item=#input>>(feed: &mut P) -> ape::Result<#output> {
+      fn __parse<P: ape::ParseFeed<Token=#input>>(feed: &mut P) -> ape::Result<#output> {
         #pattern_code
       }
   

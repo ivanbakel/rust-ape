@@ -9,43 +9,64 @@
 
 @{the parsefeed trait}
 
-@{a parsefeed implementation}
+@{parsefeed implementations}
 ---
 
 @s The ParseFeed trait
 
 A `ParseFeed` is any type which implements the necessary operators to be useable as a parsing state. These are
 --- the parsefeed trait
-pub trait ParseFeed:
- @{parsefeed requirements} 
+pub trait ParseFeed
 {
   @{parsefeed features}
 
   @{parsefeed default methods}
 }
 ---
- * producing an attempt state to try to parse with - this is equivalent to being `Clone`
---- parsefeed requirements
-Clone
----
-We mark this function `must_use` for the same reason `clone` is - it is expected to be side-effect free and non-negligible to perform, so ignoring the returned attempt is an error.
+ * producing an attempt state to try to parse with. We mark this function `must_use` for the same reason `clone` is - it is expected to be side-effect free and non-negligible to perform, so ignoring the returned attempt is an error.
 --- parsefeed features
 #[must_use = "a parsing attempt is not expected to have side-effects"]
-fn attempt(&self) -> Self where Self: Sized {
-  self.clone()
+fn attempt(&self) -> Self where Self: Sized;
+---
+ * commiting a state to an attempt which has succeeded.
+--- parsefeed features
+fn commit(&mut self, attempt: &Self) where Self: Sized;
+---
+ * emitting the next token, if any. The token type is defined as an associated type, similar to `Iterator`.
+--- parsefeed features
+type Token;
+
+fn step(&mut self) -> Option<Self::Token>;
+---
+
+Reverting on a failed state can be done by simply discarding an attempt.
+
+@ss The `std` default implementation
+
+These features can actually be emulated simply by already implementing two `std` traits - `Clone` and `Iterator`.
+--- parsefeed implementations
+impl<Feed: Clone + Iterator + Sized> ParseFeed for Feed {
+  @{std trait implementation}
 }
 ---
- * commiting a state to an attempt which has succeeded - since the `ParseFeed` is `Clone`, this is equivalent in behaviour to `clone_from` - copying a value over an existing one.
---- parsefeed features
-fn commit(&mut self, attempt: &Self) where Self: Sized {
+`attempt()` and `commit()` have corresponding `Clone` calls - `clone()` and `clone_from()` respectively.
+--- std trait implementation
+fn attempt(&self) -> Self {
+  self.clone()
+}
+
+fn commit(&mut self, attempt: &Self) {
   self.clone_from(attempt)
 }
 ---
- * emitting the next token, if any - this is equivalent to being an `Iterator`
---- parsefeed requirements
- + Iterator
+And `step()` is identical to `next()`, meaning the associated type of `Token` is equal to `Item`
+--- std trait implementation
+type Token = Feed::Item;
+
+fn step(&mut self) -> Option<Self::Token> {
+  self.next()
+}
 ---
-Reverting on a failed state can be done by simply discarding an attempt.
 
 @s Using the ParseFeed
 
@@ -57,8 +78,8 @@ use crate::{Result, Error};
 
 The first is a "expecting a next token" function which produces an error if there is no next token.
 --- parsefeed default methods+=
-fn expect(&mut self) -> Result<Self::Item> {
-  if let Some(val) = self.next() {
+fn expect(&mut self) -> Result<Self::Token> {
+  if let Some(val) = self.step() {
     Ok(val)
   } else {
     Err(Error::unexpected_end_of_input())
@@ -67,7 +88,7 @@ fn expect(&mut self) -> Result<Self::Item> {
 ---
 The second is an extension of the first to "expect n tokens", simply by repeating `expect()` `n` times.
 --- parsefeed default methods+=
-fn expect_n(&mut self, n: usize) -> Result<Vec<Self::Item>> {
+fn expect_n(&mut self, n: usize) -> Result<Vec<Self::Token>> {
   let mut items = Vec::with_capacity(n);
   for _ in 0..n {
     items.push(self.expect()?);
@@ -89,7 +110,7 @@ use backtracking_iterator::concurrent::ConcurrentReferencingBacktrackingIterator
 ---
 
 Then the default representation is simply a wrapping struct, but named to make clear the change in item type
---- a parsefeed implementation
+--- parsefeed implementations
 pub struct RefParseState<'item, Iter>(ConcurrentReferencingBacktrackingIterator<'item, Iter>) where Iter: 'item, Iter: Iterator;
 
 impl<'item, Iter> From<Iter> for RefParseState<'item, Iter> where Iter: 'item, Iter: Iterator {
@@ -99,7 +120,7 @@ impl<'item, Iter> From<Iter> for RefParseState<'item, Iter> where Iter: 'item, I
 }
 ---
 which duplicates the iterator behaviour of its internal iterator copy
---- a parsefeed implementation
+--- parsefeed implementations
 impl<'item, Iter> Clone for RefParseState<'item, Iter> where Iter: 'item, Iter: Iterator {
   fn clone(&self) -> Self {
     RefParseState(self.0.clone())
@@ -114,12 +135,7 @@ impl<'item, Iter> Iterator for RefParseState<'item, Iter> where Iter: 'item, Ite
   }
 }
 ---
-
-All that remains is to explicitly implement the trait
---- a parsefeed implementation
-impl<'item, Iter> ParseFeed for RefParseState<'item, Iter> where Iter: 'item, Iter: Iterator {
-}
----
+As these are both `Clone` and `Iterator`, there's no need to implement the `ParseFeed` trait.
 
 The above also has a copying equivalent, for cases where the copying is inexpensive or a lack of references is desireable.
 --- imports
@@ -127,7 +143,7 @@ use backtracking_iterator::concurrent::ConcurrentCopyingBacktrackingIterator;
 ---
 
 This default implementation is also a wrapping struct, and the implementation is identical to the above, apart from the omission of ref-relevant code, such as the lifetime information
---- a parsefeed implementation
+--- parsefeed implementations
 pub struct CopyParseState<Iter>(ConcurrentCopyingBacktrackingIterator<Iter>) where Iter: Iterator, Iter::Item: Clone;
 
 impl<Iter> From<Iter> for CopyParseState<Iter> where Iter: Iterator, Iter::Item: Clone {
@@ -148,9 +164,6 @@ impl<Iter> Iterator for CopyParseState<Iter> where Iter: Iterator, Iter::Item: C
   fn next(&mut self) -> Option<Self::Item> {
     self.0.next()
   }
-}
-
-impl<Iter> ParseFeed for CopyParseState<Iter> where Iter: Iterator, Iter::Item: Clone {
 }
 ---
 

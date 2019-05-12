@@ -65,6 +65,8 @@ pub trait Channelable : ParseFeed {
     }
   } 
 }
+
+impl<Feed: ParseFeed> Channelable for Feed {}
 ---
 
 @s A channel

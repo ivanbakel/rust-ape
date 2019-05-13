@@ -35,7 +35,7 @@ pub location: Span,
 so that the function to build the AST returns a `Result` over the AST type
 
 --- parsing contents+=
-pub(crate) fn parse(tokens: TokenStream) -> Result<crate::ast::Pattern> {
+pub(crate) fn parse_pattern_macro(tokens: TokenStream) -> Result<crate::ast::PatternMacro> {
   @{parsing tokens}
 }
 ---
@@ -98,19 +98,93 @@ use syn::spanned::Spanned;
 
 @s Parsing stages
 
-The parsing is broken into three stages
-  1. the construction of parse-tree pieces from raw tokens, which cannot fail
-  2. the construction of a precedence-based parse-tree from pieces, which may fail
-  3. the translation of the parse-tree into the Abstract Syntax (Rose) Tree, which may fail
+The parsing is broken into four stages
+  1. the elimination of the leading type information, which may fail
+  2. the construction of parse-tree pieces from raw tokens, which cannot fail
+  3. the construction of a precedence-based parse-tree from pieces, which may fail
+  4. the translation of the parse-tree into the Abstract Syntax (Rose) Tree, which may fail
 --- parsing tokens
+let (type_signature, pattern_tokens) = {
+  @{consume the type signature}
+}?;
 let pieces = {
-  @{tokens into pieces}
+  @{pattern tokens into pieces}
 };
 let parse_tree = {
   @{pieces into parse-tree}
 }?;
 @{parse-tree into AST}
 ---
+
+@s Consuming the type signature
+
+Here, for readability, we make use of a macro called `if_chain!`, which compresses multiple `if let` bindings.
+--- parsing imports
+extern crate if_chain;
+use self::if_chain::if_chain;
+---
+
+The type signature has the form `|| : <type> -> <type>` - the vertical brackets are reserved for future use. After it has been parsed, we continue on to the main pattern parsing logic by returning the `TokenStream` of the remaining tokens.
+
+--- consume the type signature
+let mut token_iter = tokens.into_iter();
+
+if_chain! {
+  if let Some(TokenTree::Punct(ref startbar)) = token_iter.next();
+  if startbar.as_char() == '|';
+  if let Some(TokenTree::Punct(ref endbar)) = token_iter.next();
+  if endbar.as_char() == '|';
+  then {
+    if_chain! {
+      if let Some(TokenTree::Punct(ref colon)) = token_iter.next();
+      if colon.as_char() == ':';
+      then {
+        @{match tokens for a type signature}
+      } else {
+        Err(Error {
+          message: format!("Expected a type signature starting with `:` following `||`."),
+          location: startbar.span().join(endbar.span()).unwrap(),
+        })
+      }
+    }
+  } else {
+    Err(Error {
+      message: format!("Expected the `pattern!` invocation to start with `||`."),
+      location: Span::call_site(), 
+    })
+  }
+}
+---
+
+Building the type signature is simply a question of continually consuming unambiguous pieces, so the logic is uncomplicated.
+  * first, we consume the input type
+  * then, we consume the arrow `->`
+  * finally, we consume the output type
+--- match tokens for a type signature 
+let input_type = try_syn_parse::<syn::Type>(&mut token_iter)?;
+if_chain! {
+  if let (Some(TokenTree::Punct(ref first)), Some(TokenTree::Punct(ref second))) = (token_iter.next(), token_iter.next());
+  if first.as_char() == '-' && second.as_char() == '>' && first.spacing() == Spacing::Joint;
+  then {
+    let output_type = try_syn_parse::<syn::Type>(&mut token_iter)?;
+
+    Ok((
+      crate::ast::TypeSignature {
+        input: input_type.into_token_stream(),
+        output: output_type.into_token_stream(),
+      }, 
+      TokenStream::from_iter(token_iter)
+    ))
+  } else {
+    Err(Error {
+      location: input_type.span(),
+      message: format!("Expected an arrow `->` after the first type `{}`.", input_type.into_token_stream()),
+    })
+  }
+}
+---
+
+
 
 @s Pieces from tokens
 
@@ -164,7 +238,6 @@ enum UnOpKind {
   Alias(Ident),
   Guard(TokenStream),
   CodeBlock(TokenStream),
-  TypeAnnotation(super::ast::TypeSignature),
   ZeroOrMore,
   OneOrMore,
   Optional,
@@ -207,7 +280,6 @@ impl std::fmt::Display for UnOp {
       Alias(_) => write!(f, "alias `@`"),
       Guard(_) => write!(f, "if guard"),
       CodeBlock(_) => write!(f, "=> {{ .. }}"),
-      TypeAnnotation(ref type_annotation) => write!(f, "{} -> {}", type_annotation.input, type_annotation.output),
       ZeroOrMore => write!(f, "*"),
       OneOrMore => write!(f, "+"),
       Optional => write!(f, "?"),
@@ -279,8 +351,8 @@ fn parse_tokens_into_pieces(tokens: TokenStream) -> Result<Vec<Piece>> {
    @{parse the tokens into pieces}
 }
 ---
---- tokens into pieces
-parse_tokens_into_pieces(tokens)?
+--- pattern tokens into pieces
+parse_tokens_into_pieces(pattern_tokens)?
 ---
 
 Pieces are built one at a time from iterating over the `TokenStream` - each group of tokens produces one `Piece`, so we can build the collection of `Piece`s iteratively.
@@ -379,13 +451,7 @@ TokenTree::Ident(identifier) => {
   }
 },
 ---
-A colon `:` is the start of a type annotation - no other non-raw pattern starts with it.
---- try to parse the next token into a non-raw pattern+=
-TokenTree::Punct(ref punct) if punct.as_char() == ':' => {
-  @{match tokens for a type annotation}
-}
----
-Any other punctuation mark is potentially the start of an operator
+Any punctuation mark is potentially the start of an operator
 --- try to parse the next token into a non-raw pattern+=
 TokenTree::Punct(op_start) => {
   match op_start.as_char() {
@@ -428,48 +494,6 @@ Some(Ok(Piece::Unary(UnOp {
 })))
 ---
   
-@ss Building a type annotation
-
-Building a type annotation is simply a question of continually consuming unambiguous pieces, so the logic is uncomplicated.
-  * first, we consume the input type
-  * then, we consume the arrow `->`
-  * finally, we consume the output type
---- match tokens for a type annotation+=
-match try_syn_parse::<syn::Type>(token_iter) {
-  Ok(input_type) => {
-    match (token_iter.next()?, token_iter.next()?) {
-      (TokenTree::Punct(ref first), TokenTree::Punct(ref second)) 
-      if first.as_char() == '-' && second.as_char() == '>' && first.spacing() == Spacing::Joint => {
-        match try_syn_parse::<syn::Type>(token_iter) {
-          Ok(output_type) => {
-            Some(Ok(Piece::Unary(UnOp {
-              location: input_type.span().join(output_type.span()).unwrap(),
-              kind: UnOpKind::TypeAnnotation(super::ast::TypeSignature {
-                input: input_type.into_token_stream().into(),
-                output: output_type.into_token_stream().into(),
-              }),
-            })))
-          },
-          Err(error) => {
-            Some(Err(error))
-          },
-        }
-      },
-      _ => {
-        Some(Err(Error {
-          location: input_type.span(),
-          message: format!("Expected an arrow `->` after the first type `{}`.", input_type.into_token_stream()),
-        }))
-      }
-    }
-  },
-  Err(error) => {
-    Some(Err(error))
-  }
-}
----
-
-
 @ss Detecting an operator
 
 Some operators are immediately detectable - `?` and `!`, for example, are single characters and don't prefix any other operator. 
@@ -586,7 +610,6 @@ type Precedence = usize;
 where a higher value is higher precedence.
 
 The precedence, from lowest to highest, of the syntax features is defined as follows:
- * type annotations
  * `/`
  * aliasing
  * code blocks
@@ -617,7 +640,6 @@ impl UnOp {
       Alias(_) => 2,
       Guard(_) => 5, 
       CodeBlock(_) => 3,
-      TypeAnnotation(_) => 1,
       ZeroOrMore => 6,
       OneOrMore => 6,
       Optional => 6,
@@ -645,7 +667,6 @@ impl UnOp {
       Alias(_) => Prefix,
       Guard(_) => Postfix, 
       CodeBlock(_) => Postfix,
-      TypeAnnotation(_) => Postfix,
       ZeroOrMore => Postfix,
       OneOrMore => Postfix,
       Optional => Postfix,
@@ -1161,13 +1182,16 @@ After this is unreachable, since we've covered it all above.
 
 Now that we have constructed the parse-tree, we have a data-structure which is totally correct with regards to operators and their precedence and associativity. This makes constructing the AST relatively simple, and also allows us to introduce some final steps of logic - mostly to do with trying to catch user error.
 
-The bulk of the AST-building logic will be recursive, so we involve a helper function, and call it on our root node.
+The bulk of the AST-building logic will be recursive, so we involve a helper function, and call it on our root node, combining the result with the earlier-constructed type signature.
 --- parse-tree into AST
 fn build_ast_from_parsetree(parse_tree: ParseTree) -> Result<crate::ast::Pattern> {
   @{build an AST from the parse-tree}
 }
 
-build_ast_from_parsetree(parse_tree)
+Ok(crate::ast::PatternMacro {
+  type_signature,
+  pattern: build_ast_from_parsetree(parse_tree)?,
+})
 ---
 
 What node of the AST we build depends on the node of the parse-tree we are inspecting
@@ -1181,7 +1205,6 @@ match parse_tree {
     guard: None,
     alias: None,
     code_block: None,
-    type_annotation: None,
   }),
   ParseTree::Runtime(tokens) => Ok(crate::ast::Pattern {
     location: stream_span(&tokens),
@@ -1189,7 +1212,6 @@ match parse_tree {
     guard: None,
     alias: None,
     code_block: None,
-    type_annotation: None,
   }),
   ParseTree::Bracketed(inner_node) => build_ast_from_parsetree(*inner_node),
   ParseTree::Unary { operator, on } => {
@@ -1220,7 +1242,6 @@ match operator.kind {
       guard: None,
       alias: None,
       code_block: None,
-      type_annotation: None,
     })
   },
   OneOrMoreWithDelim => { 
@@ -1237,7 +1258,6 @@ match operator.kind {
       guard: None,
       alias: None,
       code_block: None,
-      type_annotation: None,
     })
   },
   Sequence => {
@@ -1256,7 +1276,6 @@ match operator.kind {
       guard: None,
       alias: None,
       code_block: None,
-      type_annotation: None,
     })
   },
   Alternation => {
@@ -1275,7 +1294,6 @@ match operator.kind {
       guard: None,
       alias: None,
       code_block: None,
-      type_annotation: None,
     })
   },
 }
@@ -1301,7 +1319,6 @@ match operator.kind {
         guard: inner.guard,
         alias: Some(identifier),
         code_block: inner.code_block,
-        type_annotation: inner.type_annotation,
       })
     }
   },
@@ -1318,7 +1335,6 @@ match operator.kind {
         guard: Some(tokens),
         alias: inner.alias,
         code_block: inner.code_block,
-        type_annotation: inner.type_annotation,
       })
     }
   },
@@ -1335,24 +1351,6 @@ match operator.kind {
         guard: inner.guard,
         alias: inner.alias,
         code_block: Some(tokens),
-        type_annotation: inner.type_annotation,
-      })
-    }
-  },
-  TypeAnnotation(type_annotation) => {
-    if let Some(_existing) = inner.type_annotation {
-      Err(Error {
-        message: format!("Unexpected type annotation after a pattern which already has a type annotation."),
-        location: operator_span,
-      })
-    } else {
-      Ok(crate::ast::Pattern {
-        variant: inner.variant,
-        location: operator_span.join(inner.location).unwrap(),
-        guard: inner.guard,
-        alias: inner.alias,
-        code_block: inner.code_block,
-        type_annotation: Some(type_annotation),
       })
     }
   },
@@ -1367,7 +1365,6 @@ match operator.kind {
     guard: None,
     alias: None,
     code_block: None,
-    type_annotation: None,
   }),
   OneOrMore => Ok(crate::ast::Pattern {
     location: operator_span.join(inner.location).unwrap(),
@@ -1380,7 +1377,6 @@ match operator.kind {
     guard: None,
     alias: None,
     code_block: None,
-    type_annotation: None,
   }),
   Optional => Ok(crate::ast::Pattern {
     location: operator_span.join(inner.location).unwrap(),
@@ -1388,7 +1384,6 @@ match operator.kind {
     guard: None,
     alias: None,
     code_block: None,
-    type_annotation: None,
   }),
   Negation => Ok(crate::ast::Pattern {
     location: operator_span.join(inner.location).unwrap(),
@@ -1396,7 +1391,6 @@ match operator.kind {
     guard: None,
     alias: None,
     code_block: None,
-    type_annotation: None,
   }),
   Lookahead => Ok(crate::ast::Pattern {
     location: operator_span.join(inner.location).unwrap(),
@@ -1404,7 +1398,6 @@ match operator.kind {
     guard: None,
     alias: None,
     code_block: None,
-    type_annotation: None,
   }),
 }
 ---

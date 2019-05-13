@@ -12,8 +12,8 @@ use ape_macros::{pattern};
 use ape::Pattern;
 
 fn main() {
-  let oom_pattern = pattern!{true+ : bool -> ()};
-  let single_pattern = pattern!{true : bool -> ()};
+  let oom_pattern = pattern!{|| : bool -> () true+};
+  let single_pattern = pattern!{|| : bool -> () true};
 
   let mut sequence = vec![true, true, true].into_iter();
   let mut feed = ape::CopyParseState::from(sequence);

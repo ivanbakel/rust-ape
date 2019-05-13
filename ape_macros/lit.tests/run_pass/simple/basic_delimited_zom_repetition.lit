@@ -16,7 +16,7 @@ extern crate matches;
 use matches::matches;
 
 fn main() {
-  let zom_pattern = pattern!{true ** false : bool -> ()};
+  let zom_pattern = pattern!{|| : bool -> () true ** false};
   
   @{delimited ZOM tests}
 }

@@ -12,16 +12,16 @@ use ape_macros::pattern;
 struct Foo {}
 
 fn main() {
-  pattern!{ Foo => {} => {} }
+  pattern!{|| : Foo -> Bar Foo => {} => {} }
 }
 ---
 
 --- double_code_block.stderr
 error: Unexpected code block after a pattern which already has a code block.
- --> $DIR/double_code_block.rs:9:23
+ --> $DIR/double_code_block.rs:9:38
   |
-9 |   pattern!{ Foo => {} => {} }
-  |                       ^^^^^
+9 |   pattern!{|| : Foo -> Bar Foo => {} => {} }
+  |                                      ^^^^^
 
 error: aborting due to previous error
 
@@ -37,16 +37,16 @@ use ape_macros::pattern;
 struct Foo {}
 
 fn main() {
-  pattern!{ (Foo => {}) => {} }
+  pattern!{|| : Foo -> Bar (Foo => {}) => {} }
 }
 ---
 
 --- double_code_block_with_brackets.stderr
 error: Unexpected code block after a pattern which already has a code block.
- --> $DIR/double_code_block_with_brackets.rs:9:25
+ --> $DIR/double_code_block_with_brackets.rs:9:40
   |
-9 |   pattern!{ (Foo => {}) => {} }
-  |                         ^^^^^
+9 |   pattern!{|| : Foo -> Bar (Foo => {}) => {} }
+  |                                        ^^^^^
 
 error: aborting due to previous error
 

@@ -16,7 +16,7 @@ extern crate matches;
 use matches::matches;
 
 fn main() {
-  let pattern = pattern!{true => { 2_usize } : bool -> usize};
+  let pattern = pattern!{|| : bool -> usize true => { 2_usize }};
 
   let mut sequence = vec![true, false, true].into_iter();
   let mut feed = ape::CopyParseState::from(sequence);

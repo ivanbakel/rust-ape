@@ -12,7 +12,7 @@ use ape_macros::pattern;
 struct Foo {}
 
 fn main() {
-  pattern!{ Foo Foo }
+  pattern!{|| : Foo -> Bar Foo Foo }
 }
 ---
 
@@ -20,10 +20,10 @@ The expected error is that the second pattern is not expected after the first.
 
 --- two_patterns.stderr
 error: Encountered an unexpected `Foo`
- --> $DIR/two_patterns.rs:9:17
+ --> $DIR/two_patterns.rs:9:32
   |
-9 |   pattern!{ Foo Foo }
-  |                 ^^^
+9 |   pattern!{|| : Foo -> Bar Foo Foo }
+  |                                ^^^
 
 error: aborting due to previous error
 

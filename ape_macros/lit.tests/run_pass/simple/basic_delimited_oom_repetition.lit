@@ -16,7 +16,7 @@ extern crate matches;
 use matches::matches;
 
 fn main() {
-  let oom_pattern = pattern!{true ++ false : bool -> ()};
+  let oom_pattern = pattern!{|| : bool -> () true ++ false};
   
   @{delimited OOM tests}
 }

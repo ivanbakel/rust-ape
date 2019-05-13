@@ -22,6 +22,10 @@ Ape's macro code is a library file, which has the standard Rust format
 @{content}
 ---
 
+--- features
+#![recursion_limit = "128"]
+---
+
 @s The `pattern!` macro
  
 An Ape parser is produced by the `pattern!` procedural macro, which does the work of generating an Ape AST and outputting pure Rust. Proc macros are declared as functions over `TokenStream`s, with the `[proc_macro]` attribute
@@ -60,8 +64,8 @@ Finally, we define the high-level flow of the macro - first, an AST is build to 
 
 --- build an arbitrary parser from tokens
 let tokens = TokenStream::from(tokens);
-let ast = self::parsing::parse(tokens);
-let code = ast.and_then(|tree| self::code::generate(tree));
+let ast = self::parsing::parse_pattern_macro(tokens);
+let code = ast.and_then(|tree| self::code::generate_pattern_from_pattern_macro(tree));
 let generated = code.unwrap_or_else(|parsing::Error { message, location }| {
   quote_spanned! {location=>
     compile_error!(#message)

@@ -13,7 +13,7 @@ struct Foo {}
 struct Bar {}
 
 fn main() {
-  pattern!{ Foo ** Bar+ }
+  pattern!{|| : Foo -> Bar Foo ** Bar+ }
 }
 ---
 
@@ -21,10 +21,10 @@ The expected error mentions the two operators used and the ambiguity between the
 
 --- ambiguous_operators.stderr
 error: Can't combine `+` and `**` without bracketing - their use is ambiguous
-  --> $DIR/ambiguous_operators.rs:10:17
+  --> $DIR/ambiguous_operators.rs:10:32
    |
-10 |   pattern!{ Foo ** Bar+ }
-   |                 ^^^^^^^
+10 |   pattern!{|| : Foo -> Bar Foo ** Bar+ }
+   |                                ^^^^^^^
 
 error: aborting due to previous error
 

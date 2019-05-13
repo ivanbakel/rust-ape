@@ -12,8 +12,8 @@ use ape_macros::pattern;
 use ape::Pattern;
 
 fn main() {
-  let non_optional_pattern = pattern!{'a' : char -> ()};
-  let optional_pattern = pattern!{'a'? : char -> Option<()>};
+  let non_optional_pattern = pattern!{|| : char -> () 'a'};
+  let optional_pattern = pattern!{|| : char -> Option<()> 'a'?};
 
   let mut sequence = vec!['a'].into_iter();
   let mut feed = ape::CopyParseState::from(sequence);

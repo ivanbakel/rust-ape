@@ -12,7 +12,7 @@ use ape_macros::{pattern};
 use ape::Pattern;
 
 fn main() {
-  let pattern = pattern!{('a' | 'b')+ : char -> ()};
+  let pattern = pattern!{|| : char -> () ('a' | 'b')+};
 
   let mut sequence = "abaabbbbaaababaaabababbbabbaa".chars();
   let mut feed = ape::CopyParseState::from(sequence);

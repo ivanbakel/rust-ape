@@ -12,16 +12,16 @@ use ape_macros::pattern;
 struct Foo {}
 
 fn main() {
-  pattern!{ my_foo @ my_foo_2 @ Foo }
+  pattern!{|| : Foo -> Bar my_foo @ my_foo_2 @ Foo }
 }
 ---
 
 --- double_alias.stderr
 error: Tried to alias a pattern with `my_foo` after it already had the alias `my_foo_2`.
- --> $DIR/double_alias.rs:9:13
+ --> $DIR/double_alias.rs:9:28
   |
-9 |   pattern!{ my_foo @ my_foo_2 @ Foo }
-  |             ^^^^^^^^
+9 |   pattern!{|| : Foo -> Bar my_foo @ my_foo_2 @ Foo }
+  |                            ^^^^^^^^
 
 error: aborting due to previous error
 
@@ -37,16 +37,16 @@ use ape_macros::pattern;
 struct Foo {}
 
 fn main() {
-  pattern!{ my_foo @ (my_foo_2 @ Foo) }
+  pattern!{|| : Foo -> Bar my_foo @ (my_foo_2 @ Foo) }
 }
 ---
 
 --- double_alias_with_brackets.stderr
 error: Tried to alias a pattern with `my_foo` after it already had the alias `my_foo_2`.
- --> $DIR/double_alias_with_brackets.rs:9:13
+ --> $DIR/double_alias_with_brackets.rs:9:28
   |
-9 |   pattern!{ my_foo @ (my_foo_2 @ Foo) }
-  |             ^^^^^^^^
+9 |   pattern!{|| : Foo -> Bar my_foo @ (my_foo_2 @ Foo) }
+  |                            ^^^^^^^^
 
 error: aborting due to previous error
 

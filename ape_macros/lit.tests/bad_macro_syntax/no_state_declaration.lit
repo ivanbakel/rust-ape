@@ -1,0 +1,26 @@
+@title Top-level pattern with no state declaration
+
+@code_type rust .rs
+
+--- no_state_declaration.rs
+#![feature(proc_macro_hygiene)]
+extern crate ape_macros;
+
+use ape_macros::pattern;
+
+fn main() {
+  pattern!{true}
+}
+---
+
+--- no_state_declaration.stderr
+error: Expected the `pattern!` invocation to start with `||`.
+ --> $DIR/no_state_declaration.rs:7:3
+  |
+7 |   pattern!{true}
+  |   ^^^^^^^^^^^^^^
+
+error: aborting due to previous error
+
+---
+

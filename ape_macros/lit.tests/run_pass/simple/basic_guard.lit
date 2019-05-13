@@ -12,7 +12,7 @@ use ape_macros::pattern;
 use ape::Pattern;
 
 fn main() {
-  let pattern = pattern!{(x if x) : bool -> ()};
+  let pattern = pattern!{|| : bool -> () (x if x)};
 
   let mut sequence = vec![true, false, true].into_iter();
   let mut feed = ape::CopyParseState::from(sequence);

@@ -11,7 +11,7 @@ extern crate ape_macros;
 use ape_macros::pattern;
 
 fn main() {
-  pattern!{!}
+  pattern!{|| : Foo -> Bar !}
 }
 ---
 
@@ -19,8 +19,8 @@ fn main() {
 error: Unexpected end of input while trying to build the pattern.
  --> $DIR/empty_prefix.rs:7:3
   |
-7 |   pattern!{!}
-  |   ^^^^^^^^^^^
+7 |   pattern!{|| : Foo -> Bar !}
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 error: aborting due to previous error
 

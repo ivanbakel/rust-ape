@@ -16,7 +16,7 @@ extern crate matches;
 use matches::matches; 
 
 fn main() {
-  let pattern = pattern!{->'a' : char -> ()};
+  let pattern = pattern!{|| : char -> () ->'a'};
 
   let mut sequence = vec!['a', 'b', 'c'].into_iter();
   let mut feed = ape::CopyParseState::from(sequence);

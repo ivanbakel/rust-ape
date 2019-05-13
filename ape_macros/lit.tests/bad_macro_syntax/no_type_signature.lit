@@ -2,8 +2,6 @@
 
 @code_type rust .rs
 
-A test of a simple pattern which has no associated type annotation at the top level, and so, no type signature for the generated function. This should be an error.
-
 --- no_type_signature.rs
 #![feature(proc_macro_hygiene)]
 extern crate ape_macros;
@@ -11,16 +9,16 @@ extern crate ape_macros;
 use ape_macros::pattern;
 
 fn main() {
-  pattern!{true}
+  pattern!{|| true}
 }
 ---
 
 --- no_type_signature.stderr
-error: A top-level pattern must have a type annotation.
- --> $DIR/no_type_signature.rs:7:3
+error: Expected a type signature starting with `:` following `||`.
+ --> $DIR/no_type_signature.rs:7:12
   |
-7 |   pattern!{true}
-  |   ^^^^^^^^^^^^^^
+7 |   pattern!{|| true}
+  |            ^^
 
 error: aborting due to previous error
 

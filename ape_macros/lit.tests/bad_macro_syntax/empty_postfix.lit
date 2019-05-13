@@ -11,16 +11,16 @@ extern crate ape_macros;
 use ape_macros::pattern;
 
 fn main() {
-  pattern!{*}
+  pattern!{|| : Foo -> Bar *}
 }
 ---
 
 --- empty_postfix.stderr
 error: Encountered a use of `*` with no preceding pattern.
- --> $DIR/empty_postfix.rs:7:12
+ --> $DIR/empty_postfix.rs:7:28
   |
-7 |   pattern!{*}
-  |            ^
+7 |   pattern!{|| : Foo -> Bar *}
+  |                            ^
 
 error: aborting due to previous error
 

@@ -10,7 +10,33 @@ The AST code is a single file
 @{ast contents}
 ---
 
-@s The AST types
+
+@s Macro invocations
+
+There is currently one type of macro invocation - the `pattern!` macro.
+--- ast contents
+pub(crate) struct PatternMacro {
+ @{pattern macro fields}
+}
+---
+Each rule contains a `Pattern`, which defines some desired matching behaviour
+--- pattern macro fields
+pub pattern: Pattern,
+---
+Since Ape allows for rules over arbitrary types and returning arbitrary types, rules must be annotated with an input-output type arrow, `<type> -> <type>`.
+--- pattern macro fields
+pub type_signature: TypeSignature,
+---
+The TypeSignature struct is a simple representation of the arrow.
+--- ast contents+=
+#[derive(Clone)]
+pub(crate) struct TypeSignature {
+  pub input: TokenStream,
+  pub output: TokenStream,
+}
+---
+
+@s The `Pattern` type
 
 A pattern is represented as a struct
 --- ast contents+=
@@ -128,22 +154,7 @@ Ape does not have an intrinsic notion of rules and rule use. Instead, an Ape pat
 Runtime(TokenStream),
 ---
 
-@ss Type information
-
-Since Ape allows for rules over arbitrary types and returning arbitrary types, rules can also be annotated with an input-output type arrow, `<type> -> <type>`. However, it's not necessary to know the type of *every* rule, so the annotation is optional.
---- pattern fields+=
-pub type_annotation: Option<TypeSignature>,
----
-The TypeSignature struct is a simple representation of the arrow.
---- ast contents+=
-#[derive(Clone)]
-pub(crate) struct TypeSignature {
-  pub input: TokenStream,
-  pub output: TokenStream,
-}
----
-
-@s Error reporting
+@ss Error reporting
 
 It can be useful, for error reporting, to link a problem in the code with a pattern in the AST - for this, we need to produce a `Span` for each `Pattern`
 --- ast imports 

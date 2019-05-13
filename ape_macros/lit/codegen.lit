@@ -15,7 +15,7 @@ use proc_macro2::*;
 
 This logic can fail
 --- imports+=
-use super::parsing::{Result, Error};
+use super::parsing::{Result};
 ---
 
 The generated code is built inside-out - first the code for the body is generated, then it is embedded in the pattern code, 

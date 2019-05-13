@@ -22,10 +22,6 @@ Ape's macro code is a library file, which has the standard Rust format
 @{content}
 ---
 
---- features
-#![recursion_limit = "128"]
----
-
 @s The `pattern!` macro
  
 An Ape parser is produced by the `pattern!` procedural macro, which does the work of generating an Ape AST and outputting pure Rust. Proc macros are declared as functions over `TokenStream`s, with the `[proc_macro]` attribute
@@ -100,4 +96,13 @@ Syn is used to do some parsing of Rust syntax. Its features are explained more i
 --- crates+=
 extern crate syn;
 ---
+
+@s The recursion limit
+
+This crate makes use of a deep-recursive macro at some point.
+--- features
+#![recursion_limit = "128"]
+---
+
+
 
